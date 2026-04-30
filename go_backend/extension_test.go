@@ -44,6 +44,23 @@ func TestParseManifest_Valid(t *testing.T) {
 	}
 }
 
+func TestExtensionManifestStopsProviderFallback(t *testing.T) {
+	modernManifest := &ExtensionManifest{StopProviderFallback: true}
+	if !modernManifest.StopsProviderFallback() {
+		t.Fatal("expected stopProviderFallback to stop provider fallback")
+	}
+
+	legacyManifest := &ExtensionManifest{SkipBuiltInFallback: true}
+	if !legacyManifest.StopsProviderFallback() {
+		t.Fatal("expected legacy skipBuiltInFallback to stop provider fallback")
+	}
+
+	defaultManifest := &ExtensionManifest{}
+	if defaultManifest.StopsProviderFallback() {
+		t.Fatal("expected default manifest to allow provider fallback")
+	}
+}
+
 func TestParseManifest_MissingName(t *testing.T) {
 	invalidManifest := `{
 		"version": "1.0.0",

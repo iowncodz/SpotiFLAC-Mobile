@@ -960,14 +960,14 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get providerPriorityFallbackExtensionsDescription =>
-      'Pilih ekstensi unduhan terpasang mana yang boleh dipakai saat fallback otomatis. Provider bawaan tetap mengikuti urutan prioritas di atas.';
+      'Pilih ekstensi unduhan terpasang mana yang boleh dipakai saat fallback otomatis.';
 
   @override
   String get providerPriorityFallbackExtensionsHint =>
       'Hanya ekstensi aktif dengan kemampuan download provider yang ditampilkan di sini.';
 
   @override
-  String get providerBuiltIn => 'Bawaan';
+  String get providerBuiltIn => 'Legacy';
 
   @override
   String get providerExtension => 'Ekstensi';

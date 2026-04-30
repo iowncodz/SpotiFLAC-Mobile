@@ -724,6 +724,9 @@ class _MetadataSourceSelector extends ConsumerWidget {
     final settings = ref.watch(settingsProvider);
     final extState = ref.watch(extensionProvider);
     final builtInProviders = builtInSearchProviderSpecs;
+    final extensionSearchProviders = extState.extensions
+        .where((ext) => ext.enabled && ext.hasCustomSearch)
+        .toList();
 
     final rawSearchProvider = settings.searchProvider?.trim() ?? '';
     final isValidBuiltIn = isBuiltInSearchProvider(rawSearchProvider);
@@ -757,6 +760,9 @@ class _MetadataSourceSelector extends ConsumerWidget {
       subtitle = context.l10n.optionsPrimaryProviderSubtitle;
     }
 
+    final hasAnyProvider =
+        builtInProviders.isNotEmpty || extensionSearchProviders.isNotEmpty;
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -778,28 +784,7 @@ class _MetadataSourceSelector extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final provider in builtInProviders)
-                _SourceChip(
-                  icon: resolveProviderIcon(
-                    provider.id,
-                    tidalIcon: Icons.waves,
-                  ),
-                  label: provider.displayName,
-                  isSelected: searchProvider == provider.id,
-                  onTap: () {
-                    ref
-                        .read(settingsProvider.notifier)
-                        .setSearchProvider(provider.id);
-                  },
-                ),
-            ],
-          ),
-          if (activeExtension != null) ...[
-            const SizedBox(height: 12),
+          if (!hasAnyProvider)
             Row(
               children: [
                 Icon(
@@ -810,15 +795,78 @@ class _MetadataSourceSelector extends ConsumerWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    context.l10n.optionsSwitchBack,
+                    context.l10n.optionsPrimaryProviderSubtitle,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
               ],
+            )
+          else
+            Builder(
+              builder: (context) {
+                final allItems = <Widget>[
+                  for (final provider in builtInProviders)
+                    _SourceChip(
+                      icon: resolveProviderIcon(
+                        provider.id,
+                        tidalIcon: Icons.waves,
+                      ),
+                      label: provider.displayName,
+                      isSelected: searchProvider == provider.id,
+                      onTap: () {
+                        ref
+                            .read(settingsProvider.notifier)
+                            .setSearchProvider(provider.id);
+                      },
+                    ),
+                  for (final ext in extensionSearchProviders)
+                    _SourceChip(
+                      icon: Icons.extension,
+                      label: ext.displayName,
+                      isSelected: searchProvider == ext.id,
+                      onTap: () {
+                        ref
+                            .read(settingsProvider.notifier)
+                            .setSearchProvider(ext.id);
+                      },
+                    ),
+                ];
+                const perRow = 4;
+                final rows = <Widget>[];
+                for (var i = 0; i < allItems.length; i += perRow) {
+                  final chunk = allItems.sublist(
+                    i,
+                    (i + perRow > allItems.length)
+                        ? allItems.length
+                        : i + perRow,
+                  );
+                  rows.add(
+                    Row(
+                      children: [
+                        for (var j = 0; j < perRow; j++) ...[
+                          if (j > 0) const SizedBox(width: 8),
+                          Expanded(
+                            child: j < chunk.length
+                                ? chunk[j]
+                                : const SizedBox.shrink(),
+                          ),
+                        ],
+                      ],
+                    ),
+                  );
+                }
+                return Column(
+                  children: [
+                    for (var i = 0; i < rows.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 8),
+                      rows[i],
+                    ],
+                  ],
+                );
+              },
             ),
-          ],
         ],
       ),
     );
@@ -939,7 +987,7 @@ class _SourceChip extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -953,6 +1001,9 @@ class _SourceChip extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,

@@ -1000,6 +1000,7 @@ func (m *extensionManager) GetInstalledExtensionsJSON() (string, error) {
 		HasLyricsProvider      bool                   `json:"has_lyrics_provider"`
 		SkipMetadataEnrichment bool                   `json:"skip_metadata_enrichment"`
 		SkipLyrics             bool                   `json:"skip_lyrics"`
+		StopProviderFallback   bool                   `json:"stop_provider_fallback"`
 		SearchBehavior         *SearchBehaviorConfig  `json:"search_behavior,omitempty"`
 		TrackMatching          *TrackMatchingConfig   `json:"track_matching,omitempty"`
 		PostProcessing         *PostProcessingConfig  `json:"post_processing,omitempty"`
@@ -1057,6 +1058,7 @@ func (m *extensionManager) GetInstalledExtensionsJSON() (string, error) {
 			HasLyricsProvider:      ext.Manifest.IsLyricsProvider(),
 			SkipMetadataEnrichment: ext.Manifest.SkipMetadataEnrichment,
 			SkipLyrics:             ext.Manifest.SkipLyrics,
+			StopProviderFallback:   ext.Manifest.StopsProviderFallback(),
 			SearchBehavior:         ext.Manifest.SearchBehavior,
 			TrackMatching:          ext.Manifest.TrackMatching,
 			PostProcessing:         ext.Manifest.PostProcessing,

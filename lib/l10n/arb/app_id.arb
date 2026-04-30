@@ -1143,7 +1143,7 @@
   "@providerPriorityFallbackExtensionsTitle": {
     "description": "Section title for choosing which download extensions can be used as fallback providers"
   },
-  "providerPriorityFallbackExtensionsDescription": "Pilih ekstensi unduhan terpasang mana yang boleh dipakai saat fallback otomatis. Provider bawaan tetap mengikuti urutan prioritas di atas.",
+  "providerPriorityFallbackExtensionsDescription": "Pilih ekstensi unduhan terpasang mana yang boleh dipakai saat fallback otomatis.",
   "@providerPriorityFallbackExtensionsDescription": {
     "description": "Section description for extension fallback selection"
   },
@@ -1151,9 +1151,9 @@
   "@providerPriorityFallbackExtensionsHint": {
     "description": "Hint below the extension fallback selection list"
   },
-  "providerBuiltIn": "Bawaan",
+  "providerBuiltIn": "Legacy",
   "@providerBuiltIn": {
-    "description": "Label for built-in providers (Tidal/Qobuz)"
+    "description": "Label for legacy providers kept for compatibility"
   },
   "providerExtension": "Ekstensi",
   "@providerExtension": {

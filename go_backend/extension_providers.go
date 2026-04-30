@@ -1664,7 +1664,7 @@ func DownloadWithExtensionFallback(req DownloadRequest) (*DownloadResponse, erro
 	}
 
 	var lastErr error
-	var skipBuiltIn bool
+	var stopProviderFallback bool
 	var sourceExtensionLocked bool
 	var sourceExtensionAvailability *ExtAvailabilityResult
 	var sourceExtensionTrackID string
@@ -1882,13 +1882,13 @@ func DownloadWithExtensionFallback(req DownloadRequest) (*DownloadResponse, erro
 
 		ext, err := extManager.GetExtension(req.Source)
 		if err == nil && ext.Enabled && ext.Error == "" && ext.Manifest.IsDownloadProvider() {
-			skipBuiltIn = ext.Manifest.SkipBuiltInFallback
+			stopProviderFallback = ext.Manifest.StopsProviderFallback()
 
 			provider := newExtensionProviderWrapper(ext)
 
 			trackID := resolvePreferredTrackIDForExtension(ext, req, sourceExtensionTrackID)
 
-			GoLog("[DownloadWithExtensionFallback] Downloading from source extension with trackID: %s (skipBuiltInFallback: %v)\n", trackID, skipBuiltIn)
+			GoLog("[DownloadWithExtensionFallback] Downloading from source extension with trackID: %s (stopProviderFallback: %v)\n", trackID, stopProviderFallback)
 
 			outputPath := buildOutputPathForExtension(req, ext)
 			if req.ItemID != "" {
@@ -1987,12 +1987,12 @@ func DownloadWithExtensionFallback(req DownloadRequest) (*DownloadResponse, erro
 			}
 			GoLog("[DownloadWithExtensionFallback] Source extension %s failed: %v\n", req.Source, lastErr)
 
-			if skipBuiltIn || sourceExtensionLocked {
+			if stopProviderFallback || sourceExtensionLocked {
 				if sourceExtensionLocked {
 					GoLog("[DownloadWithExtensionFallback] Source extension %s requested skip_fallback, not trying other providers\n", req.Source)
 					return buildExtensionFallbackStoppedResponse(req.Source, sourceExtensionAvailability, lastErr), nil
 				}
-				GoLog("[DownloadWithExtensionFallback] skipBuiltInFallback is true, not trying other providers\n")
+				GoLog("[DownloadWithExtensionFallback] stopProviderFallback is true, not trying other providers\n")
 				return &DownloadResponse{
 					Success:   false,
 					Error:     "Download failed: " + lastErr.Error(),

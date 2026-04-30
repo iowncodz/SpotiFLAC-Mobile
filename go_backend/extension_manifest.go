@@ -115,6 +115,7 @@ type ExtensionManifest struct {
 	MinAppVersion          string                 `json:"minAppVersion,omitempty"`
 	SkipMetadataEnrichment bool                   `json:"skipMetadataEnrichment,omitempty"`
 	SkipLyrics             bool                   `json:"skipLyrics,omitempty"`
+	StopProviderFallback   bool                   `json:"stopProviderFallback,omitempty"`
 	SkipBuiltInFallback    bool                   `json:"skipBuiltInFallback,omitempty"`
 	SearchBehavior         *SearchBehaviorConfig  `json:"searchBehavior,omitempty"`
 	URLHandler             *URLHandlerConfig      `json:"urlHandler,omitempty"`
@@ -224,6 +225,13 @@ func (m *ExtensionManifest) IsDownloadProvider() bool {
 
 func (m *ExtensionManifest) IsLyricsProvider() bool {
 	return m.HasType(ExtensionTypeLyricsProvider)
+}
+
+func (m *ExtensionManifest) StopsProviderFallback() bool {
+	if m == nil {
+		return false
+	}
+	return m.StopProviderFallback || m.SkipBuiltInFallback
 }
 
 func (m *ExtensionManifest) IsDomainAllowed(domain string) bool {

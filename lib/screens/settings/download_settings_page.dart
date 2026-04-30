@@ -323,7 +323,11 @@ class _DownloadSettingsPageState extends ConsumerState<DownloadSettingsPage> {
     final effectiveBuiltInServiceId = isBuiltInService
         ? settings.defaultService
         : replacedBuiltInServiceId;
-    final isBuiltInCompatibleService = effectiveBuiltInServiceId != null;
+    final extensionService = extensionDownloadProviders
+        .where((e) => e.id == settings.defaultService)
+        .firstOrNull;
+    final hasQualityOptions = extensionService?.qualityOptions.isNotEmpty ?? false;
+    final canAskQuality = effectiveBuiltInServiceId != null || hasQualityOptions;
     final isTidalService = effectiveBuiltInServiceId == 'tidal';
 
     return PopScope(
@@ -400,17 +404,17 @@ class _DownloadSettingsPageState extends ConsumerState<DownloadSettingsPage> {
                     title: context.l10n.downloadAskBeforeDownload,
                     subtitle: !hasDownloadProviders
                         ? context.l10n.extensionsNoDownloadProvider
-                        : isBuiltInCompatibleService
+                        : canAskQuality
                         ? context.l10n.downloadAskQualitySubtitle
                         : context.l10n.downloadSelectServiceToEnable,
                     value: settings.askQualityBeforeDownload,
-                    enabled: hasDownloadProviders && isBuiltInCompatibleService,
+                    enabled: hasDownloadProviders && canAskQuality,
                     onChanged: (value) => ref
                         .read(settingsProvider.notifier)
                         .setAskQualityBeforeDownload(value),
                   ),
                   if (!settings.askQualityBeforeDownload &&
-                      isBuiltInCompatibleService) ...[
+                      canAskQuality) ...[
                     _QualityOption(
                       title: context.l10n.qualityFlacLossless,
                       subtitle: context.l10n.qualityFlacLosslessSubtitle,
@@ -472,7 +476,7 @@ class _DownloadSettingsPageState extends ConsumerState<DownloadSettingsPage> {
                       text: context.l10n.extensionsNoDownloadProvider,
                       secondaryText: context.l10n.storeAddRepoDescription,
                     ),
-                  ] else if (!isBuiltInCompatibleService) ...[
+                  ] else if (!canAskQuality) ...[
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                       child: Row(
@@ -2110,37 +2114,59 @@ class _ServiceSelector extends ConsumerWidget {
               text: context.l10n.extensionsNoDownloadProvider,
               secondaryText: context.l10n.storeAddRepoDescription,
             )
-          else ...[
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final provider in builtInProviders)
-                  _ServiceChip(
-                    icon: resolveProviderIcon(provider.id),
-                    label: provider.displayName,
-                    isSelected: effectiveService == provider.id,
-                    onTap: () => onChanged(provider.id),
-                  ),
-              ],
-            ),
-            if (extensionProviders.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final extension in extensionProviders)
+          else
+            Builder(
+              builder: (context) {
+                final allItems = <Widget>[
+                  for (final provider in builtInProviders)
+                    _ServiceChip(
+                      icon: resolveProviderIcon(provider.id),
+                      label: provider.displayName,
+                      isSelected: effectiveService == provider.id,
+                      onTap: () => onChanged(provider.id),
+                    ),
+                  for (final ext in extensionProviders)
                     _ServiceChip(
                       icon: Icons.extension,
-                      label: extension.displayName,
-                      isSelected: effectiveService == extension.id,
-                      onTap: () => onChanged(extension.id),
+                      label: ext.displayName,
+                      isSelected: effectiveService == ext.id,
+                      onTap: () => onChanged(ext.id),
                     ),
-                ],
-              ),
-            ],
-          ],
+                ];
+                const perRow = 4;
+                final rows = <Widget>[];
+                for (var i = 0; i < allItems.length; i += perRow) {
+                  final chunk = allItems.sublist(
+                    i,
+                    (i + perRow > allItems.length)
+                        ? allItems.length
+                        : i + perRow,
+                  );
+                  rows.add(
+                    Row(
+                      children: [
+                        for (var j = 0; j < perRow; j++) ...[
+                          if (j > 0) const SizedBox(width: 8),
+                          Expanded(
+                            child: j < chunk.length
+                                ? chunk[j]
+                                : const SizedBox.shrink(),
+                          ),
+                        ],
+                      ],
+                    ),
+                  );
+                }
+                return Column(
+                  children: [
+                    for (var i = 0; i < rows.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 8),
+                      rows[i],
+                    ],
+                  ],
+                );
+              },
+            ),
         ],
       ),
     );
@@ -2247,6 +2273,9 @@ class _ServiceChip extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
@@ -2254,7 +2283,6 @@ class _ServiceChip extends StatelessWidget {
                       ? colorScheme.onPrimaryContainer
                       : colorScheme.onSurfaceVariant,
                 ),
-                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),

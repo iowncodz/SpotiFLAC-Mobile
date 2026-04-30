@@ -1795,7 +1795,7 @@ abstract class AppLocalizations {
   /// Section description for extension fallback selection
   ///
   /// In en, this message translates to:
-  /// **'Choose which installed download extensions can be used during automatic fallback. Built-in providers still follow the priority order above.'**
+  /// **'Choose which installed download extensions can be used during automatic fallback.'**
   String get providerPriorityFallbackExtensionsDescription;
 
   /// Hint below the extension fallback selection list
@@ -1804,10 +1804,10 @@ abstract class AppLocalizations {
   /// **'Only enabled extensions with download-provider capability are listed here.'**
   String get providerPriorityFallbackExtensionsHint;
 
-  /// Label for built-in providers (Tidal/Qobuz)
+  /// Label for legacy providers kept for compatibility
   ///
   /// In en, this message translates to:
-  /// **'Built-in'**
+  /// **'Legacy'**
   String get providerBuiltIn;
 
   /// Label for extension-provided providers

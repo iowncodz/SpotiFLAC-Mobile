@@ -52,6 +52,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
         loaded.defaultSearchTab,
       );
       state = loaded.copyWith(
+        useExtensionProviders: true,
         downloadFallbackExtensionIds: sanitizedDownloadFallbackExtensionIds,
         clearDownloadFallbackExtensionIds:
             loaded.downloadFallbackExtensionIds != null &&
@@ -147,6 +148,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
       if (state.defaultService == 'youtube' ||
           state.defaultService == 'deezer') {
         state = state.copyWith(defaultService: '');
+      }
+      if (!state.useExtensionProviders) {
+        state = state.copyWith(useExtensionProviders: true);
       }
       await prefs.setInt(_migrationVersionKey, _currentMigrationVersion);
       await _saveSettings();
@@ -446,7 +450,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   }
 
   void setUseExtensionProviders(bool enabled) {
-    state = state.copyWith(useExtensionProviders: enabled);
+    state = state.copyWith(useExtensionProviders: true);
     _saveSettings();
   }
 
