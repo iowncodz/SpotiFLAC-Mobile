@@ -2504,6 +2504,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get collectionLoved => 'Loved';
 
   @override
+  String get collectionFavoriteArtists => 'Favorite Artists';
+
+  @override
   String get collectionPlaylists => 'Playlists';
 
   @override
@@ -2529,6 +2532,17 @@ class AppLocalizationsJa extends AppLocalizations {
       locale: localeName,
       other: '$count tracks',
       one: '1 track',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String collectionArtistCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count artists',
+      one: '1 artist',
     );
     return '$_temp0';
   }
@@ -2584,6 +2598,13 @@ class AppLocalizationsJa extends AppLocalizations {
       'Tap love on tracks to keep your favorites';
 
   @override
+  String get collectionFavoriteArtistsEmptyTitle => 'No favorite artists yet';
+
+  @override
+  String get collectionFavoriteArtistsEmptySubtitle =>
+      'Tap the heart on an artist page to keep them here';
+
+  @override
   String get collectionPlaylistEmptyTitle => 'Playlist is empty';
 
   @override
@@ -2622,6 +2643,16 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
+  String collectionAddedToFavoriteArtists(String artistName) {
+    return '\"$artistName\" added to Favorite Artists';
+  }
+
+  @override
+  String collectionRemovedFromFavoriteArtists(String artistName) {
+    return '\"$artistName\" removed from Favorite Artists';
+  }
+
+  @override
   String get trackOptionAddToLoved => 'Add to Loved';
 
   @override
@@ -2632,6 +2663,12 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get trackOptionRemoveFromWishlist => 'ウィッシュから削除';
+
+  @override
+  String get artistOptionAddToFavorites => 'Add to Favorite Artists';
+
+  @override
+  String get artistOptionRemoveFromFavorites => 'Remove from Favorite Artists';
 
   @override
   String get collectionPlaylistChangeCover => 'カバー画像を変更';

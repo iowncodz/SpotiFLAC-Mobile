@@ -2565,6 +2565,9 @@ class AppLocalizationsTr extends AppLocalizations {
   String get collectionLoved => 'Favoriler';
 
   @override
+  String get collectionFavoriteArtists => 'Favorite Artists';
+
+  @override
   String get collectionPlaylists => 'Çalma Listeleri';
 
   @override
@@ -2590,6 +2593,17 @@ class AppLocalizationsTr extends AppLocalizations {
       locale: localeName,
       other: '$count şarkı',
       one: '1 şarkı',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String collectionArtistCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count artists',
+      one: '1 artist',
     );
     return '$_temp0';
   }
@@ -2646,6 +2660,13 @@ class AppLocalizationsTr extends AppLocalizations {
       'Sevdiğiniz şarkıları burada toplamak için kalp ikonuna dokunun';
 
   @override
+  String get collectionFavoriteArtistsEmptyTitle => 'No favorite artists yet';
+
+  @override
+  String get collectionFavoriteArtistsEmptySubtitle =>
+      'Tap the heart on an artist page to keep them here';
+
+  @override
   String get collectionPlaylistEmptyTitle => 'Bu çalma listesi boş';
 
   @override
@@ -2684,6 +2705,16 @@ class AppLocalizationsTr extends AppLocalizations {
   }
 
   @override
+  String collectionAddedToFavoriteArtists(String artistName) {
+    return '\"$artistName\" added to Favorite Artists';
+  }
+
+  @override
+  String collectionRemovedFromFavoriteArtists(String artistName) {
+    return '\"$artistName\" removed from Favorite Artists';
+  }
+
+  @override
   String get trackOptionAddToLoved => 'Favorilere Ekle';
 
   @override
@@ -2694,6 +2725,12 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get trackOptionRemoveFromWishlist => 'İstek Listesinden Çıkar';
+
+  @override
+  String get artistOptionAddToFavorites => 'Add to Favorite Artists';
+
+  @override
+  String get artistOptionRemoveFromFavorites => 'Remove from Favorite Artists';
 
   @override
   String get collectionPlaylistChangeCover => 'Kapak resmini değiştir';

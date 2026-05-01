@@ -9,12 +9,13 @@ import 'package:spotiflac_android/utils/logger.dart';
 final _log = AppLogger('LibraryCollectionsDb');
 
 const _dbFileName = 'library_collections.db';
-const _dbVersion = 1;
+const _dbVersion = 2;
 
 const _tableWishlist = 'wishlist_tracks';
 const _tableLoved = 'loved_tracks';
 const _tablePlaylists = 'playlists';
 const _tablePlaylistTracks = 'playlist_tracks';
+const _tableFavoriteArtists = 'favorite_artists';
 
 const _legacyCollectionsStorageKey = 'library_collections_v1';
 const _migrationDoneKey = 'library_collections_migrated_to_sqlite_v1';
@@ -24,12 +25,14 @@ class LibraryCollectionsSnapshot {
   final List<Map<String, dynamic>> lovedRows;
   final List<Map<String, dynamic>> playlistRows;
   final List<Map<String, dynamic>> playlistTrackRows;
+  final List<Map<String, dynamic>> favoriteArtistRows;
 
   const LibraryCollectionsSnapshot({
     required this.wishlistRows,
     required this.lovedRows,
     required this.playlistRows,
     required this.playlistTrackRows,
+    required this.favoriteArtistRows,
   });
 }
 
@@ -129,6 +132,8 @@ class LibraryCollectionsDatabase {
       )
     ''');
 
+    await _createFavoriteArtistsTable(db);
+
     await db.execute(
       'CREATE INDEX idx_${_tableWishlist}_added_at ON $_tableWishlist(added_at DESC)',
     );
@@ -148,6 +153,22 @@ class LibraryCollectionsDatabase {
 
   Future<void> _upgradeDb(Database db, int oldVersion, int newVersion) async {
     _log.i('Upgrading collections database from v$oldVersion to v$newVersion');
+    if (oldVersion < 2) {
+      await _createFavoriteArtistsTable(db);
+    }
+  }
+
+  Future<void> _createFavoriteArtistsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_tableFavoriteArtists (
+        artist_key TEXT PRIMARY KEY,
+        artist_json TEXT NOT NULL,
+        added_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_${_tableFavoriteArtists}_added_at ON $_tableFavoriteArtists(added_at DESC)',
+    );
   }
 
   Future<bool> migrateFromSharedPreferences() async {
@@ -264,12 +285,17 @@ class LibraryCollectionsDatabase {
       _tablePlaylistTracks,
       orderBy: 'playlist_id ASC, added_at DESC, rowid DESC',
     );
+    final favoriteArtistRows = await db.query(
+      _tableFavoriteArtists,
+      orderBy: 'added_at DESC, rowid DESC',
+    );
 
     return LibraryCollectionsSnapshot(
       wishlistRows: wishlistRows,
       lovedRows: lovedRows,
       playlistRows: playlistRows,
       playlistTrackRows: playlistTrackRows,
+      favoriteArtistRows: favoriteArtistRows,
     );
   }
 
@@ -424,6 +450,28 @@ class LibraryCollectionsDatabase {
   Future<void> deleteLovedEntry(String trackKey) async {
     final db = await database;
     await db.delete(_tableLoved, where: 'track_key = ?', whereArgs: [trackKey]);
+  }
+
+  Future<void> upsertFavoriteArtistEntry({
+    required String artistKey,
+    required String artistJson,
+    required String addedAt,
+  }) async {
+    final db = await database;
+    await db.insert(_tableFavoriteArtists, {
+      'artist_key': artistKey,
+      'artist_json': artistJson,
+      'added_at': addedAt,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> deleteFavoriteArtistEntry(String artistKey) async {
+    final db = await database;
+    await db.delete(
+      _tableFavoriteArtists,
+      where: 'artist_key = ?',
+      whereArgs: [artistKey],
+    );
   }
 
   Future<void> upsertPlaylist({

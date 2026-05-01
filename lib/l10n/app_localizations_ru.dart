@@ -2571,6 +2571,9 @@ class AppLocalizationsRu extends AppLocalizations {
   String get collectionLoved => 'Любимые';
 
   @override
+  String get collectionFavoriteArtists => 'Favorite Artists';
+
+  @override
   String get collectionPlaylists => 'Плейлисты';
 
   @override
@@ -2598,6 +2601,17 @@ class AppLocalizationsRu extends AppLocalizations {
       many: '$count треков',
       few: '$count трека',
       one: '$count трек',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String collectionArtistCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count artists',
+      one: '1 artist',
     );
     return '$_temp0';
   }
@@ -2653,6 +2667,13 @@ class AppLocalizationsRu extends AppLocalizations {
       'Нажмите \"любовь\" на треках, чтобы сохранить ваши избранные';
 
   @override
+  String get collectionFavoriteArtistsEmptyTitle => 'No favorite artists yet';
+
+  @override
+  String get collectionFavoriteArtistsEmptySubtitle =>
+      'Tap the heart on an artist page to keep them here';
+
+  @override
   String get collectionPlaylistEmptyTitle => 'Плейлист пуст';
 
   @override
@@ -2691,6 +2712,16 @@ class AppLocalizationsRu extends AppLocalizations {
   }
 
   @override
+  String collectionAddedToFavoriteArtists(String artistName) {
+    return '\"$artistName\" added to Favorite Artists';
+  }
+
+  @override
+  String collectionRemovedFromFavoriteArtists(String artistName) {
+    return '\"$artistName\" removed from Favorite Artists';
+  }
+
+  @override
   String get trackOptionAddToLoved => 'Добавить в Любимое';
 
   @override
@@ -2701,6 +2732,12 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get trackOptionRemoveFromWishlist => 'Удалить из списка желаний';
+
+  @override
+  String get artistOptionAddToFavorites => 'Add to Favorite Artists';
+
+  @override
+  String get artistOptionRemoveFromFavorites => 'Remove from Favorite Artists';
 
   @override
   String get collectionPlaylistChangeCover => 'Изменить обложку';

@@ -2550,6 +2550,9 @@ class AppLocalizationsDe extends AppLocalizations {
   String get collectionLoved => 'Lieblingssongs';
 
   @override
+  String get collectionFavoriteArtists => 'Favorite Artists';
+
+  @override
   String get collectionPlaylists => 'Playlisten';
 
   @override
@@ -2575,6 +2578,17 @@ class AppLocalizationsDe extends AppLocalizations {
       locale: localeName,
       other: '$count Titel',
       one: '1 Titel',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String collectionArtistCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count artists',
+      one: '1 artist',
     );
     return '$_temp0';
   }
@@ -2630,6 +2644,13 @@ class AppLocalizationsDe extends AppLocalizations {
       'Tippe auf das Herz, um deine Favoriten zu behalten';
 
   @override
+  String get collectionFavoriteArtistsEmptyTitle => 'No favorite artists yet';
+
+  @override
+  String get collectionFavoriteArtistsEmptySubtitle =>
+      'Tap the heart on an artist page to keep them here';
+
+  @override
   String get collectionPlaylistEmptyTitle => 'Die Playlist ist leer';
 
   @override
@@ -2668,6 +2689,16 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
+  String collectionAddedToFavoriteArtists(String artistName) {
+    return '\"$artistName\" added to Favorite Artists';
+  }
+
+  @override
+  String collectionRemovedFromFavoriteArtists(String artistName) {
+    return '\"$artistName\" removed from Favorite Artists';
+  }
+
+  @override
   String get trackOptionAddToLoved => 'Zu Lieblingssongs hinzufügen';
 
   @override
@@ -2678,6 +2709,12 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get trackOptionRemoveFromWishlist => 'Von der Wunschliste entfernen';
+
+  @override
+  String get artistOptionAddToFavorites => 'Add to Favorite Artists';
+
+  @override
+  String get artistOptionRemoveFromFavorites => 'Remove from Favorite Artists';
 
   @override
   String get collectionPlaylistChangeCover => 'Coverbild ändern';

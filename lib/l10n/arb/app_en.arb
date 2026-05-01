@@ -3330,6 +3330,10 @@
   "@collectionLoved": {
     "description": "Custom folder for favorite tracks"
   },
+  "collectionFavoriteArtists": "Favorite Artists",
+  "@collectionFavoriteArtists": {
+    "description": "Custom folder for favorite artists"
+  },
   "collectionPlaylists": "Playlists",
   "@collectionPlaylists": {
     "description": "Custom user playlists folder"
@@ -3357,6 +3361,15 @@
   "collectionPlaylistTracks": "{count, plural, =1{1 track} other{{count} tracks}}",
   "@collectionPlaylistTracks": {
     "description": "Track count label for custom playlists",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "collectionArtistCount": "{count, plural, =1{1 artist} other{{count} artists}}",
+  "@collectionArtistCount": {
+    "description": "Artist count label for favorite artists",
     "placeholders": {
       "count": {
         "type": "int"
@@ -3434,6 +3447,14 @@
   "@collectionLovedEmptySubtitle": {
     "description": "Loved empty state subtitle"
   },
+  "collectionFavoriteArtistsEmptyTitle": "No favorite artists yet",
+  "@collectionFavoriteArtistsEmptyTitle": {
+    "description": "Favorite artists empty state title"
+  },
+  "collectionFavoriteArtistsEmptySubtitle": "Tap the heart on an artist page to keep them here",
+  "@collectionFavoriteArtistsEmptySubtitle": {
+    "description": "Favorite artists empty state subtitle"
+  },
   "collectionPlaylistEmptyTitle": "Playlist is empty",
   "@collectionPlaylistEmptyTitle": {
     "description": "Playlist empty state title"
@@ -3495,6 +3516,24 @@
       }
     }
   },
+  "collectionAddedToFavoriteArtists": "\"{artistName}\" added to Favorite Artists",
+  "@collectionAddedToFavoriteArtists": {
+    "description": "Snackbar after adding artist to favorite artists",
+    "placeholders": {
+      "artistName": {
+        "type": "String"
+      }
+    }
+  },
+  "collectionRemovedFromFavoriteArtists": "\"{artistName}\" removed from Favorite Artists",
+  "@collectionRemovedFromFavoriteArtists": {
+    "description": "Snackbar after removing artist from favorite artists",
+    "placeholders": {
+      "artistName": {
+        "type": "String"
+      }
+    }
+  },
   "trackOptionAddToLoved": "Add to Loved",
   "@trackOptionAddToLoved": {
     "description": "Bottom sheet action label - add track to loved folder"
@@ -3510,6 +3549,14 @@
   "trackOptionRemoveFromWishlist": "Remove from Wishlist",
   "@trackOptionRemoveFromWishlist": {
     "description": "Bottom sheet action label - remove track from wishlist"
+  },
+  "artistOptionAddToFavorites": "Add to Favorite Artists",
+  "@artistOptionAddToFavorites": {
+    "description": "Action label - add artist to favorite artists"
+  },
+  "artistOptionRemoveFromFavorites": "Remove from Favorite Artists",
+  "@artistOptionRemoveFromFavorites": {
+    "description": "Action label - remove artist from favorite artists"
   },
   "collectionPlaylistChangeCover": "Change cover image",
   "@collectionPlaylistChangeCover": {

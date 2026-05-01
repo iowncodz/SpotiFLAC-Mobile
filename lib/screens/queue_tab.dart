@@ -27,6 +27,7 @@ import 'package:spotiflac_android/services/local_track_redownload_service.dart';
 import 'package:spotiflac_android/services/history_database.dart';
 import 'package:spotiflac_android/services/downloaded_embedded_cover_resolver.dart';
 import 'package:spotiflac_android/screens/track_metadata_screen.dart';
+import 'package:spotiflac_android/screens/favorite_artists_screen.dart';
 import 'package:spotiflac_android/screens/downloaded_album_screen.dart';
 import 'package:spotiflac_android/widgets/re_enrich_field_dialog.dart';
 import 'package:spotiflac_android/widgets/batch_progress_dialog.dart';
@@ -2029,6 +2030,12 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     );
   }
 
+  void _openFavoriteArtistsFolder() {
+    _navigateWithUnfocus(
+      MaterialPageRoute(builder: (_) => const FavoriteArtistsScreen()),
+    );
+  }
+
   void _openPlaylistById(String playlistId) {
     _navigateWithUnfocus(
       MaterialPageRoute(
@@ -2315,6 +2322,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
         (s) => (
           s.wishlistCount,
           s.lovedCount,
+          s.favoriteArtistCount,
           s.playlistCount,
           s.hasPlaylistTracks,
           s.isLoaded,
@@ -2932,6 +2940,9 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     if (collectionState.lovedCount > 0) {
       entries.add(_CollectionEntry.loved);
     }
+    if (collectionState.favoriteArtistCount > 0) {
+      entries.add(_CollectionEntry.favoriteArtists);
+    }
     for (var i = 0; i < collectionState.playlists.length; i++) {
       entries.add(_CollectionEntry.playlist(i));
     }
@@ -2967,6 +2978,17 @@ class _QueueTabState extends ConsumerState<QueueTab> {
           title: context.l10n.collectionLoved,
           count: collectionState.lovedCount,
           onTap: _openLovedFolder,
+        );
+      case _CollectionEntryType.favoriteArtists:
+        return _buildCollectionGridItem(
+          context: context,
+          colorScheme: colorScheme,
+          icon: Icons.person,
+          iconColor: Colors.white,
+          iconBgColor: const Color(0xFFE91E63),
+          title: context.l10n.collectionFavoriteArtists,
+          count: collectionState.favoriteArtistCount,
+          onTap: _openFavoriteArtistsFolder,
         );
       case _CollectionEntryType.playlist:
         final playlist = collectionState.playlists[entry.playlistIndex];
@@ -3086,6 +3108,18 @@ class _QueueTabState extends ConsumerState<QueueTab> {
           subtitle:
               '${context.l10n.collectionFoldersTitle} • ${collectionState.lovedCount} ${collectionState.lovedCount == 1 ? 'track' : 'tracks'}',
           onTap: _openLovedFolder,
+        );
+      case _CollectionEntryType.favoriteArtists:
+        return _buildCollectionListItem(
+          context: context,
+          colorScheme: colorScheme,
+          icon: Icons.person,
+          iconColor: Colors.white,
+          iconBgColor: const Color(0xFFE91E63),
+          title: context.l10n.collectionFavoriteArtists,
+          subtitle:
+              '${context.l10n.collectionFoldersTitle} • ${context.l10n.collectionArtistCount(collectionState.favoriteArtistCount)}',
+          onTap: _openFavoriteArtistsFolder,
         );
       case _CollectionEntryType.playlist:
         final playlist = collectionState.playlists[entry.playlistIndex];

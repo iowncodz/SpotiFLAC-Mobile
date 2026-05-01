@@ -19,6 +19,28 @@ String trackCollectionKey(Track track) {
   return '$source:${track.id}';
 }
 
+String _stripCollectionResourcePrefix(String value) {
+  final colonIndex = value.indexOf(':');
+  if (colonIndex <= 0 || colonIndex == value.length - 1) {
+    return value.trim();
+  }
+  return value.substring(colonIndex + 1).trim();
+}
+
+String artistCollectionKey({
+  required String artistId,
+  required String? providerId,
+}) {
+  final trimmedArtistId = artistId.trim();
+  final trimmedProviderId = providerId?.trim();
+  final source = trimmedProviderId != null && trimmedProviderId.isNotEmpty
+      ? trimmedProviderId.toLowerCase()
+      : (trimmedArtistId.contains(':')
+            ? trimmedArtistId.split(':').first.toLowerCase()
+            : 'builtin');
+  return '$source:${_stripCollectionResourcePrefix(trimmedArtistId)}';
+}
+
 class CollectionTrackEntry {
   final String key;
   final Track track;
@@ -41,6 +63,49 @@ class CollectionTrackEntry {
     return CollectionTrackEntry(
       key: json['key'] as String,
       track: Track.fromJson(Map<String, dynamic>.from(json['track'] as Map)),
+      addedAt: DateTime.tryParse(addedAtRaw ?? '') ?? DateTime.now(),
+    );
+  }
+}
+
+class CollectionArtistEntry {
+  final String key;
+  final String artistId;
+  final String? providerId;
+  final String name;
+  final String? imageUrl;
+  final DateTime addedAt;
+
+  const CollectionArtistEntry({
+    required this.key,
+    required this.artistId,
+    required this.providerId,
+    required this.name,
+    this.imageUrl,
+    required this.addedAt,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'key': key,
+    'artistId': artistId,
+    'providerId': providerId,
+    'name': name,
+    'imageUrl': imageUrl,
+    'addedAt': addedAt.toIso8601String(),
+  };
+
+  factory CollectionArtistEntry.fromJson(Map<String, dynamic> json) {
+    final artistId = json['artistId'] as String;
+    final providerId = json['providerId'] as String?;
+    final addedAtRaw = json['addedAt'] as String?;
+    return CollectionArtistEntry(
+      key:
+          json['key'] as String? ??
+          artistCollectionKey(artistId: artistId, providerId: providerId),
+      artistId: artistId,
+      providerId: providerId,
+      name: json['name'] as String? ?? '',
+      imageUrl: json['imageUrl'] as String?,
       addedAt: DateTime.tryParse(addedAtRaw ?? '') ?? DateTime.now(),
     );
   }
@@ -180,9 +245,11 @@ class LibraryCollectionsState {
   final List<CollectionTrackEntry> wishlist;
   final List<CollectionTrackEntry> loved;
   final List<UserPlaylistCollection> playlists;
+  final List<CollectionArtistEntry> favoriteArtists;
   final bool isLoaded;
   final Set<String> _wishlistKeys;
   final Set<String> _lovedKeys;
+  final Set<String> _favoriteArtistKeys;
   final Map<String, UserPlaylistCollection> _playlistsById;
   final Set<String> _allPlaylistTrackKeys;
 
@@ -190,14 +257,19 @@ class LibraryCollectionsState {
     this.wishlist = const [],
     this.loved = const [],
     this.playlists = const [],
+    this.favoriteArtists = const [],
     this.isLoaded = false,
     Set<String>? wishlistKeys,
     Set<String>? lovedKeys,
+    Set<String>? favoriteArtistKeys,
     Map<String, UserPlaylistCollection>? playlistsById,
     Set<String>? allPlaylistTrackKeys,
   }) : _wishlistKeys =
            wishlistKeys ?? wishlist.map((entry) => entry.key).toSet(),
        _lovedKeys = lovedKeys ?? loved.map((entry) => entry.key).toSet(),
+       _favoriteArtistKeys =
+           favoriteArtistKeys ??
+           favoriteArtists.map((entry) => entry.key).toSet(),
        _playlistsById =
            playlistsById ??
            Map.fromEntries(
@@ -209,6 +281,7 @@ class LibraryCollectionsState {
   int get wishlistCount => wishlist.length;
   int get lovedCount => loved.length;
   int get playlistCount => playlists.length;
+  int get favoriteArtistCount => favoriteArtists.length;
 
   bool isInWishlist(Track track) {
     final key = trackCollectionKey(track);
@@ -226,6 +299,18 @@ class LibraryCollectionsState {
 
   bool containsLovedKey(String trackKey) {
     return _lovedKeys.contains(trackKey);
+  }
+
+  bool isFavoriteArtist({
+    required String artistId,
+    required String? providerId,
+  }) {
+    final key = artistCollectionKey(artistId: artistId, providerId: providerId);
+    return _favoriteArtistKeys.contains(key);
+  }
+
+  bool containsFavoriteArtistKey(String artistKey) {
+    return _favoriteArtistKeys.contains(artistKey);
   }
 
   UserPlaylistCollection? playlistById(String playlistId) {
@@ -248,22 +333,30 @@ class LibraryCollectionsState {
     List<CollectionTrackEntry>? wishlist,
     List<CollectionTrackEntry>? loved,
     List<UserPlaylistCollection>? playlists,
+    List<CollectionArtistEntry>? favoriteArtists,
     bool? isLoaded,
   }) {
     final nextWishlist = wishlist ?? this.wishlist;
     final nextLoved = loved ?? this.loved;
     final nextPlaylists = playlists ?? this.playlists;
+    final nextFavoriteArtists = favoriteArtists ?? this.favoriteArtists;
     final keepWishlistIndex = identical(nextWishlist, this.wishlist);
     final keepLovedIndex = identical(nextLoved, this.loved);
     final keepPlaylistIndex = identical(nextPlaylists, this.playlists);
+    final keepFavoriteArtistIndex = identical(
+      nextFavoriteArtists,
+      this.favoriteArtists,
+    );
 
     return LibraryCollectionsState(
       wishlist: nextWishlist,
       loved: nextLoved,
       playlists: nextPlaylists,
+      favoriteArtists: nextFavoriteArtists,
       isLoaded: isLoaded ?? this.isLoaded,
       wishlistKeys: keepWishlistIndex ? _wishlistKeys : null,
       lovedKeys: keepLovedIndex ? _lovedKeys : null,
+      favoriteArtistKeys: keepFavoriteArtistIndex ? _favoriteArtistKeys : null,
       playlistsById: keepPlaylistIndex ? _playlistsById : null,
       allPlaylistTrackKeys: keepPlaylistIndex ? _allPlaylistTrackKeys : null,
     );
@@ -273,12 +366,14 @@ class LibraryCollectionsState {
     'wishlist': wishlist.map((e) => e.toJson()).toList(),
     'loved': loved.map((e) => e.toJson()).toList(),
     'playlists': playlists.map((e) => e.toJson()).toList(),
+    'favoriteArtists': favoriteArtists.map((e) => e.toJson()).toList(),
   };
 
   factory LibraryCollectionsState.fromJson(Map<String, dynamic> json) {
     final wishlistRaw = (json['wishlist'] as List?) ?? const [];
     final lovedRaw = (json['loved'] as List?) ?? const [];
     final playlistsRaw = (json['playlists'] as List?) ?? const [];
+    final favoriteArtistsRaw = (json['favoriteArtists'] as List?) ?? const [];
 
     return LibraryCollectionsState(
       wishlist: wishlistRaw
@@ -298,6 +393,12 @@ class LibraryCollectionsState {
           .map(
             (e) =>
                 UserPlaylistCollection.fromJson(Map<String, dynamic>.from(e)),
+          )
+          .toList(growable: false),
+      favoriteArtists: favoriteArtistsRaw
+          .whereType<Map<Object?, Object?>>()
+          .map(
+            (e) => CollectionArtistEntry.fromJson(Map<String, dynamic>.from(e)),
           )
           .toList(growable: false),
       isLoaded: true,
@@ -360,6 +461,14 @@ class LibraryCollectionsNotifier extends Notifier<LibraryCollectionsState> {
         }
       }
 
+      final favoriteArtists = <CollectionArtistEntry>[];
+      for (final row in snapshot.favoriteArtistRows) {
+        final parsed = _parseArtistEntryRow(row);
+        if (parsed != null) {
+          favoriteArtists.add(parsed);
+        }
+      }
+
       final tracksByPlaylist = <String, List<CollectionTrackEntry>>{};
       for (final row in snapshot.playlistTrackRows) {
         final playlistId = row['playlist_id'] as String?;
@@ -396,6 +505,7 @@ class LibraryCollectionsNotifier extends Notifier<LibraryCollectionsState> {
         wishlist: wishlist,
         loved: loved,
         playlists: playlists,
+        favoriteArtists: favoriteArtists,
         isLoaded: true,
       );
     } catch (_) {
@@ -425,6 +535,31 @@ class LibraryCollectionsNotifier extends Notifier<LibraryCollectionsState> {
         track: track,
         addedAt: DateTime.tryParse(addedAtRaw ?? '') ?? DateTime.now(),
       );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  CollectionArtistEntry? _parseArtistEntryRow(Map<String, dynamic> row) {
+    final key = row['artist_key'] as String?;
+    final artistJson = row['artist_json'] as String?;
+    if (key == null ||
+        key.isEmpty ||
+        artistJson == null ||
+        artistJson.isEmpty) {
+      return null;
+    }
+
+    try {
+      final decoded = jsonDecode(artistJson);
+      if (decoded is! Map) return null;
+      final map = Map<String, dynamic>.from(decoded);
+      final addedAtRaw = row['added_at'] as String?;
+      return CollectionArtistEntry.fromJson({
+        ...map,
+        'key': key,
+        'addedAt': map['addedAt'] ?? addedAtRaw,
+      });
     } catch (_) {
       return null;
     }
@@ -501,6 +636,59 @@ class LibraryCollectionsNotifier extends Notifier<LibraryCollectionsState> {
     final updated = [entry, ...state.loved];
     state = state.copyWith(loved: updated);
     return true;
+  }
+
+  Future<bool> toggleFavoriteArtist({
+    required String artistId,
+    required String? providerId,
+    required String name,
+    String? imageUrl,
+  }) async {
+    await _ensureLoaded();
+    final key = artistCollectionKey(artistId: artistId, providerId: providerId);
+    final sourceSeparator = key.indexOf(':');
+    final source = sourceSeparator > 0 ? key.substring(0, sourceSeparator) : '';
+    final trimmedProviderId = providerId?.trim();
+    final effectiveProviderId =
+        trimmedProviderId != null && trimmedProviderId.isNotEmpty
+        ? trimmedProviderId
+        : (source.isNotEmpty && source != 'builtin' ? source : null);
+    if (state.containsFavoriteArtistKey(key)) {
+      await _db.deleteFavoriteArtistEntry(key);
+      final updated = state.favoriteArtists
+          .where((entry) => entry.key != key)
+          .toList(growable: false);
+      state = state.copyWith(favoriteArtists: updated);
+      return false;
+    }
+
+    final entry = CollectionArtistEntry(
+      key: key,
+      artistId: _stripCollectionResourcePrefix(artistId),
+      providerId: effectiveProviderId,
+      name: name,
+      imageUrl: imageUrl,
+      addedAt: DateTime.now(),
+    );
+    await _db.upsertFavoriteArtistEntry(
+      artistKey: key,
+      artistJson: jsonEncode(entry.toJson()),
+      addedAt: entry.addedAt.toIso8601String(),
+    );
+    final updated = [entry, ...state.favoriteArtists];
+    state = state.copyWith(favoriteArtists: updated);
+    return true;
+  }
+
+  Future<void> removeFavoriteArtist(String artistKey) async {
+    await _ensureLoaded();
+    if (!state.containsFavoriteArtistKey(artistKey)) return;
+
+    await _db.deleteFavoriteArtistEntry(artistKey);
+    final updated = state.favoriteArtists
+        .where((entry) => entry.key != artistKey)
+        .toList(growable: false);
+    state = state.copyWith(favoriteArtists: updated);
   }
 
   Future<void> removeFromWishlist(String trackKey) async {

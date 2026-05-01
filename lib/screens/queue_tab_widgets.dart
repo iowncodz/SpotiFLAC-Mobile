@@ -25,7 +25,7 @@ class _QueueItemSliverRow extends ConsumerWidget {
   }
 }
 
-enum _CollectionEntryType { wishlist, loved, playlist }
+enum _CollectionEntryType { wishlist, loved, favoriteArtists, playlist }
 
 class _CollectionEntry {
   final _CollectionEntryType type;
@@ -35,6 +35,9 @@ class _CollectionEntry {
 
   static const wishlist = _CollectionEntry._(_CollectionEntryType.wishlist);
   static const loved = _CollectionEntry._(_CollectionEntryType.loved);
+  static const favoriteArtists = _CollectionEntry._(
+    _CollectionEntryType.favoriteArtists,
+  );
   static _CollectionEntry playlist(int index) =>
       _CollectionEntry._(_CollectionEntryType.playlist, index);
 }

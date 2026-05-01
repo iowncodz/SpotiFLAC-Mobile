@@ -4475,6 +4475,12 @@ abstract class AppLocalizations {
   /// **'Loved'**
   String get collectionLoved;
 
+  /// Custom folder for favorite artists
+  ///
+  /// In en, this message translates to:
+  /// **'Favorite Artists'**
+  String get collectionFavoriteArtists;
+
   /// Custom user playlists folder
   ///
   /// In en, this message translates to:
@@ -4516,6 +4522,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 track} other{{count} tracks}}'**
   String collectionPlaylistTracks(int count);
+
+  /// Artist count label for favorite artists
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 artist} other{{count} artists}}'**
+  String collectionArtistCount(int count);
 
   /// Snackbar after adding track to playlist
   ///
@@ -4601,6 +4613,18 @@ abstract class AppLocalizations {
   /// **'Tap love on tracks to keep your favorites'**
   String get collectionLovedEmptySubtitle;
 
+  /// Favorite artists empty state title
+  ///
+  /// In en, this message translates to:
+  /// **'No favorite artists yet'**
+  String get collectionFavoriteArtistsEmptyTitle;
+
+  /// Favorite artists empty state subtitle
+  ///
+  /// In en, this message translates to:
+  /// **'Tap the heart on an artist page to keep them here'**
+  String get collectionFavoriteArtistsEmptySubtitle;
+
   /// Playlist empty state title
   ///
   /// In en, this message translates to:
@@ -4655,6 +4679,18 @@ abstract class AppLocalizations {
   /// **'\"{trackName}\" removed from Wishlist'**
   String collectionRemovedFromWishlist(String trackName);
 
+  /// Snackbar after adding artist to favorite artists
+  ///
+  /// In en, this message translates to:
+  /// **'\"{artistName}\" added to Favorite Artists'**
+  String collectionAddedToFavoriteArtists(String artistName);
+
+  /// Snackbar after removing artist from favorite artists
+  ///
+  /// In en, this message translates to:
+  /// **'\"{artistName}\" removed from Favorite Artists'**
+  String collectionRemovedFromFavoriteArtists(String artistName);
+
   /// Bottom sheet action label - add track to loved folder
   ///
   /// In en, this message translates to:
@@ -4678,6 +4714,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Remove from Wishlist'**
   String get trackOptionRemoveFromWishlist;
+
+  /// Action label - add artist to favorite artists
+  ///
+  /// In en, this message translates to:
+  /// **'Add to Favorite Artists'**
+  String get artistOptionAddToFavorites;
+
+  /// Action label - remove artist from favorite artists
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from Favorite Artists'**
+  String get artistOptionRemoveFromFavorites;
 
   /// Bottom sheet action to pick a custom cover image for a playlist
   ///

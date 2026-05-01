@@ -10,6 +10,7 @@ import 'package:spotiflac_android/providers/extension_provider.dart';
 import 'package:spotiflac_android/providers/track_provider.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/providers/download_queue_provider.dart';
+import 'package:spotiflac_android/providers/library_collections_provider.dart';
 import 'package:spotiflac_android/providers/recent_access_provider.dart';
 import 'package:spotiflac_android/providers/local_library_provider.dart';
 import 'package:spotiflac_android/providers/playback_provider.dart';
@@ -912,6 +913,32 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
     await _downloadAlbums(context, albums);
   }
 
+  Future<void> _toggleFavoriteArtist(BuildContext context) async {
+    final providerId = _directMetadataProviderId();
+    final imageUrl =
+        _headerImageUrl ?? widget.headerImageUrl ?? widget.coverUrl;
+    final added = await ref
+        .read(libraryCollectionsProvider.notifier)
+        .toggleFavoriteArtist(
+          artistId: _metadataResourceId(providerId ?? ''),
+          providerId: providerId,
+          name: widget.artistName,
+          imageUrl: imageUrl,
+        );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          added
+              ? context.l10n.collectionAddedToFavoriteArtists(widget.artistName)
+              : context.l10n.collectionRemovedFromFavoriteArtists(
+                  widget.artistName,
+                ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _fetchAndQueueAlbums(
     List<ArtistAlbum> albums,
     String service,
@@ -1100,6 +1127,17 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
       );
     }
 
+    final favoriteProviderId = _directMetadataProviderId();
+    final favoriteArtistId = _metadataResourceId(favoriteProviderId ?? '');
+    final isFavoriteArtist = ref.watch(
+      libraryCollectionsProvider.select(
+        (state) => state.isFavoriteArtist(
+          artistId: favoriteArtistId,
+          providerId: favoriteProviderId,
+        ),
+      ),
+    );
+
     return SliverAppBar(
       expandedHeight: hasDiscography ? 420 : 380,
       pinned: true,
@@ -1220,6 +1258,32 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                       ],
                     ),
                   ),
+                  if (!_isSelectionMode) ...[
+                    const SizedBox(width: 12),
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        onPressed: () => _toggleFavoriteArtist(context),
+                        icon: Icon(
+                          isFavoriteArtist
+                              ? Icons.favorite
+                              : Icons.favorite_border,
+                          size: 26,
+                        ),
+                        color: isFavoriteArtist
+                            ? colorScheme.error
+                            : Colors.black87,
+                        tooltip: isFavoriteArtist
+                            ? context.l10n.artistOptionRemoveFromFavorites
+                            : context.l10n.artistOptionAddToFavorites,
+                      ),
+                    ),
+                  ],
                   if (hasDiscography && !_isSelectionMode) ...[
                     const SizedBox(width: 12),
                     Container(
