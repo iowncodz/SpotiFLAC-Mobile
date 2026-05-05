@@ -18,7 +18,6 @@ const _excludedDownloadedCountKey = 'local_library_excluded_downloaded_count';
 final _prefs = SharedPreferences.getInstance();
 
 class LocalLibraryState {
-  final List<LocalLibraryItem> items;
   final bool isScanning;
   final bool scanIsFinalizing;
   final double scanProgress;
@@ -27,14 +26,15 @@ class LocalLibraryState {
   final int scannedFiles;
   final int scanErrorCount;
   final bool scanWasCancelled;
+  final int totalCount;
+  final int loadedIndexVersion;
   final DateTime? lastScannedAt;
   final int excludedDownloadedCount;
   final Set<String> _trackKeySet;
-  final Map<String, LocalLibraryItem> _byIsrc;
-  final Map<String, LocalLibraryItem> _byTrackKey;
+  final Set<String> _isrcSet;
+  final Map<String, String> _filePathById;
 
   LocalLibraryState({
-    this.items = const [],
     this.isScanning = false,
     this.scanIsFinalizing = false,
     this.scanProgress = 0,
@@ -43,36 +43,30 @@ class LocalLibraryState {
     this.scannedFiles = 0,
     this.scanErrorCount = 0,
     this.scanWasCancelled = false,
+    this.totalCount = 0,
+    this.loadedIndexVersion = 0,
     this.lastScannedAt,
     this.excludedDownloadedCount = 0,
     Set<String>? trackKeySet,
-    Map<String, LocalLibraryItem>? byIsrc,
-    Map<String, LocalLibraryItem>? byTrackKey,
-  }) : _trackKeySet = trackKeySet ?? items.map((item) => item.matchKey).toSet(),
-       _byIsrc =
-           byIsrc ??
-           Map.fromEntries(
-             items
-                 .where((item) => item.isrc != null && item.isrc!.isNotEmpty)
-                 .map((item) => MapEntry(item.isrc!, item)),
-           ),
-       _byTrackKey =
-           byTrackKey ??
-           Map.fromEntries(items.map((item) => MapEntry(item.matchKey, item)));
+    Set<String>? isrcSet,
+    Map<String, String>? filePathById,
+  }) : _trackKeySet = trackKeySet ?? const <String>{},
+       _isrcSet = isrcSet ?? const <String>{},
+       _filePathById = filePathById ?? const <String, String>{};
 
-  bool hasIsrc(String isrc) => _byIsrc.containsKey(isrc);
+  @Deprecated(
+    'LocalLibraryState no longer owns full track rows. Use DB-backed page providers.',
+  )
+  List<LocalLibraryItem> get items => const <LocalLibraryItem>[];
+
+  bool hasIsrc(String isrc) => _isrcSet.contains(isrc);
 
   bool hasTrack(String trackName, String artistName) {
-    final key = '${trackName.toLowerCase()}|${artistName.toLowerCase()}';
+    final key = LibraryDatabase.matchKeyFor(trackName, artistName);
     return _trackKeySet.contains(key);
   }
 
-  LocalLibraryItem? getByIsrc(String isrc) => _byIsrc[isrc];
-
-  LocalLibraryItem? findByTrackAndArtist(String trackName, String artistName) {
-    final key = '${trackName.toLowerCase()}|${artistName.toLowerCase()}';
-    return _byTrackKey[key];
-  }
+  String? filePathForId(String id) => _filePathById[id];
 
   bool existsInLibrary({String? isrc, String? trackName, String? artistName}) {
     if (isrc != null && isrc.isNotEmpty && hasIsrc(isrc)) {
@@ -85,7 +79,6 @@ class LocalLibraryState {
   }
 
   LocalLibraryState copyWith({
-    List<LocalLibraryItem>? items,
     bool? isScanning,
     bool? scanIsFinalizing,
     double? scanProgress,
@@ -94,14 +87,15 @@ class LocalLibraryState {
     int? scannedFiles,
     int? scanErrorCount,
     bool? scanWasCancelled,
+    int? totalCount,
+    int? loadedIndexVersion,
     DateTime? lastScannedAt,
     int? excludedDownloadedCount,
+    Set<String>? trackKeySet,
+    Set<String>? isrcSet,
+    Map<String, String>? filePathById,
   }) {
-    final nextItems = items ?? this.items;
-    final keepDerivedIndex = identical(nextItems, this.items);
-
     return LocalLibraryState(
-      items: nextItems,
       isScanning: isScanning ?? this.isScanning,
       scanIsFinalizing: scanIsFinalizing ?? this.scanIsFinalizing,
       scanProgress: scanProgress ?? this.scanProgress,
@@ -110,12 +104,14 @@ class LocalLibraryState {
       scannedFiles: scannedFiles ?? this.scannedFiles,
       scanErrorCount: scanErrorCount ?? this.scanErrorCount,
       scanWasCancelled: scanWasCancelled ?? this.scanWasCancelled,
+      totalCount: totalCount ?? this.totalCount,
+      loadedIndexVersion: loadedIndexVersion ?? this.loadedIndexVersion,
       lastScannedAt: lastScannedAt ?? this.lastScannedAt,
       excludedDownloadedCount:
           excludedDownloadedCount ?? this.excludedDownloadedCount,
-      trackKeySet: keepDerivedIndex ? _trackKeySet : null,
-      byIsrc: keepDerivedIndex ? _byIsrc : null,
-      byTrackKey: keepDerivedIndex ? _byTrackKey : null,
+      trackKeySet: trackKeySet ?? _trackKeySet,
+      isrcSet: isrcSet ?? _isrcSet,
+      filePathById: filePathById ?? _filePathById,
     );
   }
 }
@@ -169,12 +165,11 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
     _isLoaded = true;
 
     try {
-      final dbItemsFuture = _db.getAll();
+      final countFuture = _db.getCount();
+      final indexFuture = _db.getLookupIndex();
       final prefsFuture = _prefs;
-      final jsonList = await dbItemsFuture;
-      final items = jsonList
-          .map((e) => LocalLibraryItem.fromJson(e))
-          .toList(growable: false);
+      final count = await countFuture;
+      final lookupIndex = await indexFuture;
 
       DateTime? lastScannedAt;
       var excludedDownloadedCount = 0;
@@ -188,12 +183,16 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
       }
 
       state = state.copyWith(
-        items: items,
+        totalCount: count,
+        loadedIndexVersion: state.loadedIndexVersion + 1,
         lastScannedAt: lastScannedAt,
         excludedDownloadedCount: excludedDownloadedCount,
+        trackKeySet: lookupIndex.matchKeys,
+        isrcSet: lookupIndex.isrcs,
+        filePathById: lookupIndex.filePathById,
       );
       _log.i(
-        'Loaded ${items.length} items from library database, lastScannedAt: '
+        'Loaded local library summary: $count items, lastScannedAt: '
         '$lastScannedAt, excludedDownloadedCount: $excludedDownloadedCount',
       );
       _hasLoadedFromDatabase = true;
@@ -212,6 +211,27 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
     await _ensureLoadedFromDatabase();
   }
 
+  Future<void> _refreshSummaryFromStorage({
+    DateTime? lastScannedAt,
+    int? excludedDownloadedCount,
+  }) async {
+    final countFuture = _db.getCount();
+    final indexFuture = _db.getLookupIndex();
+    final count = await countFuture;
+    final index = await indexFuture;
+    state = state.copyWith(
+      totalCount: count,
+      loadedIndexVersion: state.loadedIndexVersion + 1,
+      lastScannedAt: lastScannedAt,
+      excludedDownloadedCount: excludedDownloadedCount,
+      trackKeySet: index.matchKeys,
+      isrcSet: index.isrcs,
+      filePathById: index.filePathById,
+    );
+    _hasLoadedFromDatabase = true;
+    _isLoaded = true;
+  }
+
   bool _isDownloadedPath(String? filePath, Set<String> downloadedPathKeys) {
     if (filePath == null || filePath.isEmpty || downloadedPathKeys.isEmpty) {
       return false;
@@ -223,31 +243,6 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
       }
     }
     return false;
-  }
-
-  Future<Map<String, LocalLibraryItem>> _currentItemsByPathForIncrementalScan(
-    Map<String, int> existingFiles,
-  ) async {
-    await _ensureLoadedFromDatabase();
-
-    final loadedItems = state.items;
-    if (loadedItems.isNotEmpty || existingFiles.isEmpty) {
-      return <String, LocalLibraryItem>{
-        for (final item in loadedItems) item.filePath: item,
-      };
-    }
-
-    // Rare fallback: if provider state failed to warm while the database has
-    // rows, preserve correctness instead of applying a diff to an empty base.
-    _log.w(
-      'Library state is empty while database has ${existingFiles.length} files; '
-      'loading incremental scan baseline from database',
-    );
-    final existingJson = await _db.getAll();
-    return <String, LocalLibraryItem>{
-      for (final item in existingJson.map(LocalLibraryItem.fromJson))
-        item.filePath: item,
-    };
   }
 
   Future<void> startScan(
@@ -376,7 +371,6 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
         }
 
         await _db.replaceAll(items.map((e) => e.toJson()).toList());
-        final persistedItems = [...items]..sort(_compareLibraryItems);
 
         final now = DateTime.now();
         try {
@@ -388,8 +382,11 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
           _log.w('Failed to save lastScannedAt: $e');
         }
 
+        await _refreshSummaryFromStorage(
+          lastScannedAt: now,
+          excludedDownloadedCount: skippedDownloads,
+        );
         state = state.copyWith(
-          items: persistedItems,
           isScanning: false,
           scanIsFinalizing: false,
           scanProgress: 100,
@@ -397,14 +394,14 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
           scanWasCancelled: false,
           excludedDownloadedCount: skippedDownloads,
         );
-        await _pruneLibraryCoverCache(persistedItems);
+        await _pruneLibraryCoverCache();
 
         _log.i(
-          'Full scan complete: ${persistedItems.length} tracks found, '
+          'Full scan complete: ${state.totalCount} tracks found, '
           '$skippedDownloads already in downloads',
         );
         await _showScanCompleteNotification(
-          totalTracks: persistedItems.length,
+          totalTracks: state.totalCount,
           excludedDownloadedCount: skippedDownloads,
           errorCount: state.scanErrorCount,
         );
@@ -497,17 +494,13 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
           '$skippedCount skipped, ${deletedPaths.length} deleted, $totalFiles total',
         );
 
-        final currentByPath = await _currentItemsByPathForIncrementalScan(
-          existingFiles,
-        );
+        final existingPaths = existingFiles.keys.toList(growable: false);
         final existingDownloadedPaths = <String>[];
-        currentByPath.removeWhere((path, _) {
-          final shouldExclude = _isDownloadedPath(path, downloadedPathKeys);
-          if (shouldExclude) {
+        for (final path in existingPaths) {
+          if (_isDownloadedPath(path, downloadedPathKeys)) {
             existingDownloadedPaths.add(path);
           }
-          return shouldExclude;
-        });
+        }
         if (existingDownloadedPaths.isNotEmpty) {
           final removed = await _db.deleteByPaths(existingDownloadedPaths);
           _log.i(
@@ -527,7 +520,6 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
             }
             final item = LocalLibraryItem.fromJson(map);
             updatedItems.add(item);
-            currentByPath[item.filePath] = item;
           }
           if (updatedItems.isNotEmpty) {
             await _db.upsertBatch(updatedItems.map((e) => e.toJson()).toList());
@@ -542,14 +534,8 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
 
         if (deletedPaths.isNotEmpty) {
           final deleteCount = await _db.deleteByPaths(deletedPaths);
-          for (final path in deletedPaths) {
-            currentByPath.remove(path);
-          }
           _log.i('Deleted $deleteCount items from database');
         }
-
-        final items = currentByPath.values.toList(growable: false)
-          ..sort(_compareLibraryItems);
 
         final now = DateTime.now();
         try {
@@ -561,8 +547,11 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
           _log.w('Failed to save lastScannedAt: $e');
         }
 
+        await _refreshSummaryFromStorage(
+          lastScannedAt: now,
+          excludedDownloadedCount: skippedDownloads,
+        );
         state = state.copyWith(
-          items: items,
           isScanning: false,
           scanIsFinalizing: false,
           scanProgress: 100,
@@ -572,12 +561,12 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
         );
 
         _log.i(
-          'Incremental scan complete: ${items.length} total tracks '
+          'Incremental scan complete: ${state.totalCount} total tracks '
           '(${scannedList.length} new/updated, $skippedCount unchanged, '
           '${deletedPaths.length} removed, $skippedDownloads already in downloads)',
         );
         await _showScanCompleteNotification(
-          totalTracks: items.length,
+          totalTracks: state.totalCount,
           excludedDownloadedCount: skippedDownloads,
           errorCount: state.scanErrorCount,
         );
@@ -893,7 +882,7 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
     try {
       final removed = await _db.cleanupMissingFiles();
       if (removed > 0) {
-        await reloadFromStorage();
+        await _refreshSummaryFromStorage();
       }
       return removed;
     } finally {
@@ -914,11 +903,11 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
       _log.w('Failed to clear lastScannedAt: $e');
     }
 
-    state = LocalLibraryState();
+    state = LocalLibraryState(loadedIndexVersion: state.loadedIndexVersion + 1);
     _log.i('Library cleared');
   }
 
-  Future<void> _pruneLibraryCoverCache(Iterable<LocalLibraryItem> items) async {
+  Future<void> _pruneLibraryCoverCache() async {
     try {
       final appSupportDir = await getApplicationSupportDirectory();
       final libraryCoverDir = Directory('${appSupportDir.path}/library_covers');
@@ -926,11 +915,16 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
         return;
       }
 
-      final referencedCoverPaths = items
-          .map((item) => item.coverPath)
-          .whereType<String>()
-          .where((path) => path.isNotEmpty)
-          .toSet();
+      final referencedCoverPaths = <String>{};
+      var offset = 0;
+      const pageSize = 500;
+      while (true) {
+        final page = await _db.getCoverPaths(limit: pageSize, offset: offset);
+        if (page.isEmpty) break;
+        referencedCoverPaths.addAll(page);
+        if (page.length < pageSize) break;
+        offset += pageSize;
+      }
 
       var deletedCount = 0;
       await for (final entity in libraryCoverDir.list(
@@ -960,9 +954,7 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
 
   Future<void> removeItem(String id) async {
     await _db.delete(id);
-    state = state.copyWith(
-      items: state.items.where((item) => item.id != id).toList(),
-    );
+    await _refreshSummaryFromStorage();
   }
 
   bool existsInLibrary({String? isrc, String? trackName, String? artistName}) {
@@ -973,21 +965,40 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
     );
   }
 
-  LocalLibraryItem? getByIsrc(String isrc) {
-    return state.getByIsrc(isrc);
+  Future<LocalLibraryItem?> getById(String id) async {
+    final json = await _db.getById(id);
+    return json == null ? null : LocalLibraryItem.fromJson(json);
   }
 
-  LocalLibraryItem? findExisting({
+  Future<LocalLibraryItem?> getByIsrcAsync(String isrc) async {
+    final json = await _db.getByIsrc(isrc);
+    return json == null ? null : LocalLibraryItem.fromJson(json);
+  }
+
+  Future<LocalLibraryItem?> findByTrackAndArtistAsync(
+    String trackName,
+    String artistName,
+  ) async {
+    final json = await _db.findFirstByTrackAndArtist(trackName, artistName);
+    return json == null ? null : LocalLibraryItem.fromJson(json);
+  }
+
+  Future<LocalLibraryItem?> findExistingAsync({
+    String? id,
     String? isrc,
     String? trackName,
     String? artistName,
-  }) {
+  }) async {
+    if (id != null && id.isNotEmpty) {
+      final byId = await getById(id);
+      if (byId != null) return byId;
+    }
     if (isrc != null && isrc.isNotEmpty) {
-      final byIsrc = state.getByIsrc(isrc);
+      final byIsrc = await getByIsrcAsync(isrc);
       if (byIsrc != null) return byIsrc;
     }
     if (trackName != null && artistName != null) {
-      return state.findByTrackAndArtist(trackName, artistName);
+      return findByTrackAndArtistAsync(trackName, artistName);
     }
     return null;
   }
@@ -1001,23 +1012,6 @@ class LocalLibraryNotifier extends Notifier<LocalLibraryState> {
 
   Future<int> getCount() async {
     return await _db.getCount();
-  }
-
-  int _compareLibraryItems(LocalLibraryItem a, LocalLibraryItem b) {
-    final artistA = (a.albumArtist ?? a.artistName).toLowerCase();
-    final artistB = (b.albumArtist ?? b.artistName).toLowerCase();
-    final artistCompare = artistA.compareTo(artistB);
-    if (artistCompare != 0) return artistCompare;
-
-    final albumCompare = a.albumName.toLowerCase().compareTo(
-      b.albumName.toLowerCase(),
-    );
-    if (albumCompare != 0) return albumCompare;
-
-    final discCompare = (a.discNumber ?? 0).compareTo(b.discNumber ?? 0);
-    if (discCompare != 0) return discCompare;
-
-    return (a.trackNumber ?? 0).compareTo(b.trackNumber ?? 0);
   }
 
   Future<Map<String, int>> _backfillLegacyFileModTimes({
@@ -1097,3 +1091,239 @@ final localLibraryProvider =
     NotifierProvider<LocalLibraryNotifier, LocalLibraryState>(
       LocalLibraryNotifier.new,
     );
+
+final localLibrarySummaryProvider = Provider<LocalLibraryState>((ref) {
+  return ref.watch(localLibraryProvider);
+});
+
+class LocalLibraryLookup {
+  final LibraryDatabase _db;
+
+  const LocalLibraryLookup(this._db);
+
+  Future<LocalLibraryItem?> byId(String id) async {
+    final json = await _db.getById(id);
+    return json == null ? null : LocalLibraryItem.fromJson(json);
+  }
+
+  Future<LocalLibraryItem?> byIsrc(String isrc) async {
+    final json = await _db.getByIsrc(isrc);
+    return json == null ? null : LocalLibraryItem.fromJson(json);
+  }
+
+  Future<LocalLibraryItem?> byTrackAndArtist(
+    String trackName,
+    String artistName,
+  ) async {
+    final json = await _db.findFirstByTrackAndArtist(trackName, artistName);
+    return json == null ? null : LocalLibraryItem.fromJson(json);
+  }
+
+  Future<LocalLibraryItem?> existing({
+    String? id,
+    String? isrc,
+    String? trackName,
+    String? artistName,
+  }) async {
+    if (id != null && id.isNotEmpty) {
+      final item = await byId(id);
+      if (item != null) return item;
+    }
+    if (isrc != null && isrc.isNotEmpty) {
+      final item = await byIsrc(isrc);
+      if (item != null) return item;
+    }
+    if (trackName != null && artistName != null) {
+      return byTrackAndArtist(trackName, artistName);
+    }
+    return null;
+  }
+}
+
+final localLibraryLookupProvider = Provider<LocalLibraryLookup>((ref) {
+  ref.watch(localLibraryProvider.select((state) => state.loadedIndexVersion));
+  return LocalLibraryLookup(LibraryDatabase.instance);
+});
+
+class LocalLibraryCoverRequest {
+  final String? isrc;
+  final String trackName;
+  final String artistName;
+
+  const LocalLibraryCoverRequest({
+    this.isrc,
+    required this.trackName,
+    required this.artistName,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    return other is LocalLibraryCoverRequest &&
+        other.isrc == isrc &&
+        other.trackName == trackName &&
+        other.artistName == artistName;
+  }
+
+  @override
+  int get hashCode => Object.hash(isrc, trackName, artistName);
+}
+
+class LocalLibraryCoverBatchRequest {
+  final List<LocalLibraryCoverRequest> tracks;
+
+  const LocalLibraryCoverBatchRequest(this.tracks);
+
+  @override
+  bool operator ==(Object other) {
+    if (other is! LocalLibraryCoverBatchRequest) return false;
+    if (other.tracks.length != tracks.length) return false;
+    for (var i = 0; i < tracks.length; i++) {
+      if (other.tracks[i] != tracks[i]) return false;
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hashAll(tracks);
+}
+
+String? _nonEmptyCoverPath(Map<String, dynamic>? json) {
+  final coverPath = json?['coverPath'] as String?;
+  final trimmed = coverPath?.trim();
+  return trimmed == null || trimmed.isEmpty ? null : trimmed;
+}
+
+final localLibraryCoverProvider =
+    FutureProvider.family<String?, LocalLibraryCoverRequest>((ref, request) {
+      ref.watch(
+        localLibraryProvider.select((state) => state.loadedIndexVersion),
+      );
+      return LibraryDatabase.instance
+          .findExisting(
+            isrc: request.isrc,
+            trackName: request.trackName,
+            artistName: request.artistName,
+          )
+          .then(_nonEmptyCoverPath);
+    });
+
+final localLibraryFirstCoverProvider =
+    FutureProvider.family<String?, LocalLibraryCoverBatchRequest>((
+      ref,
+      request,
+    ) async {
+      ref.watch(
+        localLibraryProvider.select((state) => state.loadedIndexVersion),
+      );
+      for (final track in request.tracks) {
+        final cover = _nonEmptyCoverPath(
+          await LibraryDatabase.instance.findExisting(
+            isrc: track.isrc,
+            trackName: track.trackName,
+            artistName: track.artistName,
+          ),
+        );
+        if (cover != null) return cover;
+      }
+      return null;
+    });
+
+final localLibraryPageProvider =
+    FutureProvider.family<List<LocalLibraryItem>, LocalLibraryPageRequest>((
+      ref,
+      request,
+    ) async {
+      ref.watch(
+        localLibraryProvider.select((state) => state.loadedIndexVersion),
+      );
+      final rows = await LibraryDatabase.instance.getPage(request);
+      return rows.map(LocalLibraryItem.fromJson).toList(growable: false);
+    });
+
+final localLibraryPageCountProvider =
+    FutureProvider.family<int, LocalLibraryPageRequest>((ref, request) async {
+      ref.watch(
+        localLibraryProvider.select((state) => state.loadedIndexVersion),
+      );
+      return LibraryDatabase.instance.getPageCount(request);
+    });
+
+class LocalLibraryAlbumPageRequest {
+  final int limit;
+  final int offset;
+  final LocalLibraryFilterMode filterMode;
+  final LocalLibrarySortMode sortMode;
+  final String? searchQuery;
+
+  const LocalLibraryAlbumPageRequest({
+    this.limit = 100,
+    this.offset = 0,
+    this.filterMode = LocalLibraryFilterMode.albums,
+    this.sortMode = LocalLibrarySortMode.album,
+    this.searchQuery,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    return other is LocalLibraryAlbumPageRequest &&
+        other.limit == limit &&
+        other.offset == offset &&
+        other.filterMode == filterMode &&
+        other.sortMode == sortMode &&
+        other.searchQuery == searchQuery;
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(limit, offset, filterMode, sortMode, searchQuery);
+}
+
+final localLibraryAlbumPageProvider =
+    FutureProvider.family<
+      List<LocalLibraryAlbumGroup>,
+      LocalLibraryAlbumPageRequest
+    >((ref, request) async {
+      ref.watch(
+        localLibraryProvider.select((state) => state.loadedIndexVersion),
+      );
+      return LibraryDatabase.instance.getAlbumPage(
+        limit: request.limit,
+        offset: request.offset,
+        filterMode: request.filterMode,
+        sortMode: request.sortMode,
+        searchQuery: request.searchQuery,
+      );
+    });
+
+final localLibraryAlbumCountProvider =
+    FutureProvider.family<int, LocalLibraryAlbumPageRequest>((
+      ref,
+      request,
+    ) async {
+      ref.watch(
+        localLibraryProvider.select((state) => state.loadedIndexVersion),
+      );
+      return LibraryDatabase.instance.getAlbumCount(
+        filterMode: request.filterMode,
+        searchQuery: request.searchQuery,
+      );
+    });
+
+final localLibraryAllItemsProvider = FutureProvider<List<LocalLibraryItem>>((
+  ref,
+) async {
+  ref.watch(localLibraryProvider.select((state) => state.loadedIndexVersion));
+  const pageSize = 500;
+  final items = <LocalLibraryItem>[];
+  var offset = 0;
+  while (true) {
+    final rows = await LibraryDatabase.instance.getPage(
+      const LocalLibraryPageRequest(limit: pageSize).copyWithOffset(offset),
+    );
+    if (rows.isEmpty) break;
+    items.addAll(rows.map(LocalLibraryItem.fromJson));
+    if (rows.length < pageSize) break;
+    offset += pageSize;
+  }
+  return items;
+});

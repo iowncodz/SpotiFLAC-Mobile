@@ -1106,7 +1106,12 @@ final _queueHistoryStatsProvider = Provider<_HistoryStats>((ref) {
     settingsProvider.select((s) => s.localLibraryEnabled),
   );
   final localItems = localLibraryEnabled
-      ? ref.watch(localLibraryProvider.select((s) => s.items))
+      ? ref
+            .watch(localLibraryAllItemsProvider)
+            .maybeWhen(
+              data: (items) => items,
+              orElse: () => const <LocalLibraryItem>[],
+            )
       : const <LocalLibraryItem>[];
   return _buildQueueHistoryStats(historyItems, localItems);
 });

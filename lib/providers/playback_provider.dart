@@ -76,11 +76,10 @@ class PlaybackController extends Notifier<PlaybackState> {
   }
 
   Future<String?> _resolveTrackPath(Track track) async {
-    final localState = ref.read(localLibraryProvider);
     final historyState = ref.read(downloadHistoryProvider);
     final historyNotifier = ref.read(downloadHistoryProvider.notifier);
 
-    final localItem = _findLocalLibraryItemForTrack(track, localState);
+    final localItem = await _findLocalLibraryItemForTrack(track);
     if (localItem != null && await fileExists(localItem.filePath)) {
       return localItem.filePath;
     }
@@ -96,28 +95,23 @@ class PlaybackController extends Notifier<PlaybackState> {
     return null;
   }
 
-  LocalLibraryItem? _findLocalLibraryItemForTrack(
-    Track track,
-    LocalLibraryState localState,
-  ) {
+  Future<LocalLibraryItem?> _findLocalLibraryItemForTrack(Track track) async {
     final isLocalSource = (track.source ?? '').toLowerCase() == 'local';
     if (isLocalSource) {
-      for (final item in localState.items) {
-        if (item.id == track.id) {
-          return item;
-        }
-      }
+      final byId = await ref
+          .read(localLibraryProvider.notifier)
+          .getById(track.id);
+      if (byId != null) return byId;
     }
 
     final isrc = track.isrc?.trim();
-    if (isrc != null && isrc.isNotEmpty) {
-      final byIsrc = localState.getByIsrc(isrc);
-      if (byIsrc != null) {
-        return byIsrc;
-      }
-    }
-
-    return localState.findByTrackAndArtist(track.name, track.artistName);
+    return ref
+        .read(localLibraryProvider.notifier)
+        .findExistingAsync(
+          isrc: isrc,
+          trackName: track.name,
+          artistName: track.artistName,
+        );
   }
 
   DownloadHistoryItem? _findDownloadHistoryItemForTrack(

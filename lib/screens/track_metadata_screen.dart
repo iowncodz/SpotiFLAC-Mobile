@@ -24,7 +24,6 @@ import 'package:spotiflac_android/utils/lyrics_metadata_helper.dart';
 import 'package:spotiflac_android/utils/mime_utils.dart';
 import 'package:spotiflac_android/utils/image_cache_utils.dart';
 import 'package:spotiflac_android/utils/string_utils.dart';
-import 'package:spotiflac_android/widgets/animation_utils.dart';
 import 'package:spotiflac_android/widgets/audio_analysis_widget.dart';
 
 part 'track_metadata_edit_sheet.dart';
@@ -101,6 +100,11 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
   bool _hasMetadataChanges = false;
   bool _hasLoadedResolvedAudioMetadata = false;
   bool _isTrackSwipeNavigationInFlight = false;
+  int _metadataLoadGeneration = 0;
+  int _metadataTransitionDirection = 0;
+  late DownloadHistoryItem? _currentDownloadItem;
+  late LocalLibraryItem? _currentLocalLibraryItem;
+  late int? _currentNavigationIndex;
   Map<String, dynamic>? _editedMetadata;
   String? _embeddedCoverPreviewPath;
   final ScrollController _scrollController = ScrollController();
@@ -226,6 +230,9 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
   @override
   void initState() {
     super.initState();
+    _currentDownloadItem = widget.item;
+    _currentLocalLibraryItem = widget.localItem;
+    _currentNavigationIndex = widget.navigationIndex;
     _scrollController.addListener(_onScroll);
     _checkFile();
   }
@@ -253,6 +260,7 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
   }
 
   Future<void> _checkFile() async {
+    final generation = _metadataLoadGeneration;
     final filePath = cleanFilePath;
 
     bool exists = false;
@@ -266,6 +274,8 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
     } catch (_) {}
 
     if (mounted &&
+        generation == _metadataLoadGeneration &&
+        filePath == cleanFilePath &&
         (exists != _fileExists || size != _fileSize || !_hasCheckedFile)) {
       setState(() {
         _fileExists = exists;
@@ -274,21 +284,35 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
       });
     }
 
-    if (mounted && exists && _lyrics == null && !_lyricsLoading) {
+    if (mounted &&
+        generation == _metadataLoadGeneration &&
+        filePath == cleanFilePath &&
+        exists &&
+        _lyrics == null &&
+        !_lyricsLoading) {
       _checkEmbeddedLyrics();
     }
     if (mounted &&
+        generation == _metadataLoadGeneration &&
+        filePath == cleanFilePath &&
         exists &&
         !_isCueVirtualTrack &&
         !_hasLoadedResolvedAudioMetadata) {
       unawaited(_refreshResolvedAudioMetadataFromFile());
     }
-    if (mounted && exists && !_hasPath(_embeddedCoverPreviewPath)) {
+    if (mounted &&
+        generation == _metadataLoadGeneration &&
+        filePath == cleanFilePath &&
+        exists &&
+        !_hasPath(_embeddedCoverPreviewPath)) {
       final cachedPath = await _getCachedEmbeddedCoverPreviewPathIfValid(
         _coverCacheKey,
-        cleanFilePath,
+        filePath,
       );
-      if (_hasPath(cachedPath)) {
+      if (mounted &&
+          generation == _metadataLoadGeneration &&
+          filePath == cleanFilePath &&
+          _hasPath(cachedPath)) {
         setState(() => _embeddedCoverPreviewPath = cachedPath);
       }
     }
@@ -318,6 +342,8 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
   }
 
   Future<void> _refreshResolvedAudioMetadataFromFile() async {
+    final generation = _metadataLoadGeneration;
+    final sourcePath = cleanFilePath;
     if ((_isLocalItem && _localLibraryItem == null) ||
         (!_isLocalItem && _downloadItem == null) ||
         _isCueVirtualTrack ||
@@ -328,7 +354,12 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
     _hasLoadedResolvedAudioMetadata = true;
 
     try {
-      final metadata = await PlatformBridge.readFileMetadata(cleanFilePath);
+      final metadata = await PlatformBridge.readFileMetadata(sourcePath);
+      if (!mounted ||
+          generation != _metadataLoadGeneration ||
+          sourcePath != cleanFilePath) {
+        return;
+      }
       if (metadata['error'] != null) {
         return;
       }
@@ -463,6 +494,7 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
   }
 
   Future<void> _refreshEmbeddedCoverPreview({bool force = false}) async {
+    final generation = _metadataLoadGeneration;
     final cacheKey = _coverCacheKey;
     final sourcePath = cleanFilePath;
     if (!force) {
@@ -471,7 +503,10 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
         sourcePath,
       );
       if (_hasPath(cachedPath)) {
-        if (mounted && _embeddedCoverPreviewPath != cachedPath) {
+        if (mounted &&
+            generation == _metadataLoadGeneration &&
+            sourcePath == cleanFilePath &&
+            _embeddedCoverPreviewPath != cachedPath) {
           setState(() => _embeddedCoverPreviewPath = cachedPath);
         }
         return;
@@ -483,7 +518,9 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
       if (!_fileExists) {
         await _invalidateEmbeddedCoverPreviewCacheForPath(cacheKey);
         await _cleanupTempFileAndParentIfNotCached(_embeddedCoverPreviewPath);
-        if (mounted) {
+        if (mounted &&
+            generation == _metadataLoadGeneration &&
+            sourcePath == cleanFilePath) {
           setState(() => _embeddedCoverPreviewPath = null);
         }
         return;
@@ -511,7 +548,9 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
     } catch (_) {}
 
     final oldPreviewPath = _embeddedCoverPreviewPath;
-    if (!mounted) {
+    if (!mounted ||
+        generation != _metadataLoadGeneration ||
+        sourcePath != cleanFilePath) {
       if (newPreviewPath != null) {
         await _cleanupTempFileAndParentIfNotCached(newPreviewPath);
       }
@@ -524,16 +563,16 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
     }
   }
 
-  bool get _isLocalItem => widget.localItem != null;
-  DownloadHistoryItem? get _downloadItem => widget.item;
-  LocalLibraryItem? get _localLibraryItem => widget.localItem;
+  bool get _isLocalItem => _currentLocalLibraryItem != null;
+  DownloadHistoryItem? get _downloadItem => _currentDownloadItem;
+  LocalLibraryItem? get _localLibraryItem => _currentLocalLibraryItem;
   bool get _hasHistoryNavigation =>
       widget.historyNavigationItems != null && widget.navigationIndex != null;
   bool get _hasLocalNavigation =>
       widget.localNavigationItems != null && widget.navigationIndex != null;
   bool get _hasTrackSwipeNavigation =>
       _hasHistoryNavigation || _hasLocalNavigation;
-  int? get _navigationIndex => widget.navigationIndex;
+  int? get _navigationIndex => _currentNavigationIndex;
   int get _navigationLength =>
       widget.historyNavigationItems?.length ??
       widget.localNavigationItems?.length ??
@@ -869,28 +908,50 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
     if (targetIndex < 0 || targetIndex >= _navigationLength) return;
 
     _isTrackSwipeNavigationInFlight = true;
-    await Navigator.of(context).pushReplacement<bool, bool>(
-      adjacentHorizontalPageRoute<bool>(
-        page: _buildSiblingTrackScreen(targetIndex),
-        fromRight: offset > 0,
-      ),
-      result: _hasMetadataChanges ? true : null,
-    );
-  }
+    final oldPreviewPath = _embeddedCoverPreviewPath;
 
-  TrackMetadataScreen _buildSiblingTrackScreen(int targetIndex) {
-    if (_hasHistoryNavigation) {
-      return TrackMetadataScreen(
-        item: widget.historyNavigationItems![targetIndex],
-        historyNavigationItems: widget.historyNavigationItems,
-        navigationIndex: targetIndex,
-      );
+    try {
+      setState(() {
+        _metadataLoadGeneration++;
+        _metadataTransitionDirection = offset > 0 ? 1 : -1;
+        _currentNavigationIndex = targetIndex;
+        if (_hasHistoryNavigation) {
+          _currentDownloadItem = widget.historyNavigationItems![targetIndex];
+          _currentLocalLibraryItem = null;
+        } else {
+          _currentDownloadItem = null;
+          _currentLocalLibraryItem = widget.localNavigationItems![targetIndex];
+        }
+        _fileExists = false;
+        _hasCheckedFile = false;
+        _fileSize = null;
+        _lyrics = null;
+        _rawLyrics = null;
+        _lyricsLoading = false;
+        _lyricsError = null;
+        _lyricsSource = null;
+        _showTitleInAppBar = false;
+        _lyricsEmbedded = false;
+        _isInstrumental = false;
+        _embeddedLyricsChecked = false;
+        _hasLoadedResolvedAudioMetadata = false;
+        _editedMetadata = null;
+        _embeddedCoverPreviewPath = null;
+      });
+
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(0);
+      }
+
+      if (oldPreviewPath != null) {
+        unawaited(_cleanupTempFileAndParentIfNotCached(oldPreviewPath));
+      }
+      await _checkFile();
+    } finally {
+      if (mounted) {
+        _isTrackSwipeNavigationInFlight = false;
+      }
     }
-    return TrackMetadataScreen(
-      localItem: widget.localNavigationItems![targetIndex],
-      localNavigationItems: widget.localNavigationItems,
-      navigationIndex: targetIndex,
-    );
   }
 
   @override
@@ -973,40 +1034,82 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
             ),
 
             SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildMetadataCard(context, colorScheme, _fileSize),
-
-                    const SizedBox(height: 16),
-
-                    _buildFileInfoCard(
-                      context,
-                      colorScheme,
-                      _fileExists,
-                      _fileSize,
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    _buildLyricsCard(context, colorScheme),
-
-                    if (_fileExists) ...[
-                      const SizedBox(height: 16),
-                      AudioAnalysisCard(filePath: _filePath),
-                    ],
-
-                    const SizedBox(height: 24),
-
-                    _buildActionButtons(context, ref, colorScheme, _fileExists),
-
-                    const SizedBox(height: 32),
-                  ],
-                ),
-              ),
+              child: _buildAnimatedTrackContent(context, ref, colorScheme),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnimatedTrackContent(
+    BuildContext context,
+    WidgetRef ref,
+    ColorScheme colorScheme,
+  ) {
+    final currentKey = ValueKey<String>('metadata_content_$_itemId');
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 240),
+      reverseDuration: const Duration(milliseconds: 180),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      layoutBuilder: (currentChild, previousChildren) {
+        return Stack(
+          alignment: Alignment.topCenter,
+          children: <Widget>[...previousChildren, ?currentChild],
+        );
+      },
+      transitionBuilder: (child, animation) {
+        if (_metadataTransitionDirection == 0) {
+          return child;
+        }
+        final isIncoming = child.key == currentKey;
+        final direction = _metadataTransitionDirection.toDouble();
+        final begin = Offset(
+          isIncoming ? 0.18 * direction : -0.18 * direction,
+          0,
+        );
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return ClipRect(
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: begin,
+              end: Offset.zero,
+            ).animate(curved),
+            child: FadeTransition(opacity: animation, child: child),
+          ),
+        );
+      },
+      child: Padding(
+        key: currentKey,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildMetadataCard(context, colorScheme, _fileSize),
+
+            const SizedBox(height: 16),
+
+            _buildFileInfoCard(context, colorScheme, _fileExists, _fileSize),
+
+            const SizedBox(height: 16),
+
+            _buildLyricsCard(context, colorScheme),
+
+            if (_fileExists) ...[
+              const SizedBox(height: 16),
+              AudioAnalysisCard(filePath: _filePath),
+            ],
+
+            const SizedBox(height: 24),
+
+            _buildActionButtons(context, ref, colorScheme, _fileExists),
+
+            const SizedBox(height: 32),
           ],
         ),
       ),
@@ -1944,6 +2047,9 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
   /// Called automatically when the screen opens.
   Future<void> _checkEmbeddedLyrics() async {
     if (_lyricsLoading || !_fileExists) return;
+    final generation = _metadataLoadGeneration;
+    final sourcePath = cleanFilePath;
+    if (!mounted) return;
 
     setState(() {
       _lyricsLoading = true;
@@ -1958,7 +2064,7 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
             '',
             trackName,
             artistName,
-            filePath: cleanFilePath,
+            filePath: sourcePath,
             durationMs: 0,
           ).timeout(
             const Duration(seconds: 5),
@@ -1968,7 +2074,9 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
       final embeddedLyrics = embeddedResult['lyrics']?.toString() ?? '';
       final embeddedSource = embeddedResult['source']?.toString() ?? '';
 
-      if (mounted) {
+      if (mounted &&
+          generation == _metadataLoadGeneration &&
+          sourcePath == cleanFilePath) {
         if (embeddedLyrics.isNotEmpty) {
           final cleanLyrics = _cleanLrcForDisplay(embeddedLyrics);
           setState(() {
@@ -1989,7 +2097,9 @@ class _TrackMetadataScreenState extends ConsumerState<TrackMetadataScreen> {
         }
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted &&
+          generation == _metadataLoadGeneration &&
+          sourcePath == cleanFilePath) {
         setState(() {
           _lyricsLoading = false;
           _embeddedLyricsChecked = true;

@@ -1085,7 +1085,6 @@ class _AlbumTrackItem extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
   ) async {
-    final localState = ref.read(localLibraryProvider);
     final historyState = ref.read(downloadHistoryProvider);
     final historyNotifier = ref.read(downloadHistoryProvider.notifier);
 
@@ -1119,13 +1118,13 @@ class _AlbumTrackItem extends ConsumerWidget {
         historyNotifier.removeFromHistory(historyItem.id);
       }
 
-      var localItem = (isrc != null && isrc.isNotEmpty)
-          ? localState.getByIsrc(isrc)
-          : null;
-      localItem ??= localState.findByTrackAndArtist(
-        track.name,
-        track.artistName,
-      );
+      final localItem = await ref
+          .read(localLibraryProvider.notifier)
+          .findExistingAsync(
+            isrc: isrc,
+            trackName: track.name,
+            artistName: track.artistName,
+          );
 
       if (localItem != null && await fileExists(localItem.filePath)) {
         await ref

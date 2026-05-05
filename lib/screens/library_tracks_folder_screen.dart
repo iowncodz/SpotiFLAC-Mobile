@@ -12,7 +12,6 @@ import 'package:spotiflac_android/providers/extension_provider.dart';
 import 'package:spotiflac_android/providers/library_collections_provider.dart';
 import 'package:spotiflac_android/providers/playback_provider.dart';
 import 'package:spotiflac_android/providers/local_library_provider.dart';
-import 'package:spotiflac_android/services/library_database.dart';
 import 'package:spotiflac_android/providers/settings_provider.dart';
 import 'package:spotiflac_android/services/cover_cache_manager.dart';
 import 'package:spotiflac_android/screens/track_metadata_screen.dart';
@@ -79,45 +78,20 @@ class _LibraryTracksFolderScreenState
     };
   }
 
-  String? _resolveEntryCoverUrl(
-    CollectionTrackEntry entry,
-    LocalLibraryState localState,
-  ) {
+  String? _resolveRawEntryCoverUrl(CollectionTrackEntry entry) {
     final rawCover = entry.track.coverUrl?.trim();
     if (rawCover != null &&
         rawCover.isNotEmpty &&
         !rawCover.startsWith('content://')) {
       return rawCover;
     }
-
-    final isrc = entry.track.isrc?.trim();
-    if (isrc != null && isrc.isNotEmpty) {
-      final byIsrc = localState.getByIsrc(isrc);
-      final localCover = byIsrc?.coverPath?.trim();
-      if (localCover != null && localCover.isNotEmpty) {
-        return localCover;
-      }
-    }
-
-    final byTrack = localState.findByTrackAndArtist(
-      entry.track.name,
-      entry.track.artistName,
-    );
-    final localCover = byTrack?.coverPath?.trim();
-    if (localCover != null && localCover.isNotEmpty) {
-      return localCover;
-    }
-
     return null;
   }
 
   /// Find the first available cover URL from entries.
-  String? _firstCoverUrl(
-    List<CollectionTrackEntry> entries,
-    LocalLibraryState localState,
-  ) {
+  String? _firstRawCoverUrl(List<CollectionTrackEntry> entries) {
     for (final entry in entries) {
-      final cover = _resolveEntryCoverUrl(entry, localState);
+      final cover = _resolveRawEntryCoverUrl(entry);
       if (cover != null && cover.isNotEmpty) {
         return cover;
       }
@@ -212,6 +186,22 @@ class _LibraryTracksFolderScreenState
     );
   }
 
+  LocalLibraryCoverBatchRequest _coverBatchRequest(
+    List<CollectionTrackEntry> entries,
+  ) {
+    return LocalLibraryCoverBatchRequest(
+      entries
+          .map(
+            (entry) => LocalLibraryCoverRequest(
+              isrc: entry.track.isrc?.trim(),
+              trackName: entry.track.name,
+              artistName: entry.track.artistName,
+            ),
+          )
+          .toList(growable: false),
+    );
+  }
+
   void _downloadSelected(List<CollectionTrackEntry> entries) {
     final settings = ref.read(settingsProvider);
     final extensionState = ref.read(extensionProvider);
@@ -255,8 +245,7 @@ class _LibraryTracksFolderScreenState
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    ref.watch(localLibraryProvider.select((s) => s.items));
-    final localState = ref.read(localLibraryProvider);
+    ref.watch(localLibraryProvider.select((s) => s.loadedIndexVersion));
     final List<CollectionTrackEntry> entries;
 
     switch (widget.mode) {
@@ -337,14 +326,7 @@ class _LibraryTracksFolderScreenState
             CustomScrollView(
               controller: _scrollController,
               slivers: [
-                _buildAppBar(
-                  context,
-                  colorScheme,
-                  title,
-                  entries,
-                  playlist,
-                  localState,
-                ),
+                _buildAppBar(context, colorScheme, title, entries, playlist),
                 if (entries.isEmpty)
                   SliverFillRemaining(
                     hasScrollBody: false,
@@ -366,7 +348,6 @@ class _LibraryTracksFolderScreenState
                             entry: entry,
                             mode: widget.mode,
                             playlistId: widget.playlistId,
-                            localLibraryState: localState,
                             folderTracks: folderTracks,
                             isSelectionMode: _isSelectionMode,
                             isSelected: isSelected,
@@ -602,13 +583,21 @@ class _LibraryTracksFolderScreenState
     String title,
     List<CollectionTrackEntry> entries,
     UserPlaylistCollection? playlist,
-    LocalLibraryState localState,
   ) {
     final expandedHeight = _calculateExpandedHeight(context);
     final customCoverPath = playlist?.coverImagePath;
     final isLovedMode = widget.mode == LibraryTracksFolderMode.loved;
     final isPlaylistMode = widget.mode == LibraryTracksFolderMode.playlist;
-    final coverUrl = isLovedMode ? null : _firstCoverUrl(entries, localState);
+    final rawCoverUrl = isLovedMode ? null : _firstRawCoverUrl(entries);
+    final localCoverUrl =
+        rawCoverUrl == null && !isLovedMode && entries.isNotEmpty
+        ? ref
+              .watch(
+                localLibraryFirstCoverProvider(_coverBatchRequest(entries)),
+              )
+              .maybeWhen(data: (cover) => cover, orElse: () => null)
+        : null;
+    final coverUrl = rawCoverUrl ?? localCoverUrl;
     final hasCustomCover =
         customCoverPath != null && customCoverPath.isNotEmpty;
     final hasCoverUrl = coverUrl != null;
@@ -1069,7 +1058,6 @@ class _CollectionTrackTile extends ConsumerWidget {
   final CollectionTrackEntry entry;
   final LibraryTracksFolderMode mode;
   final String? playlistId;
-  final LocalLibraryState localLibraryState;
   final List<Track> folderTracks;
   final bool isSelectionMode;
   final bool isSelected;
@@ -1080,7 +1068,6 @@ class _CollectionTrackTile extends ConsumerWidget {
     required this.entry,
     required this.mode,
     required this.playlistId,
-    required this.localLibraryState,
     required this.folderTracks,
     this.isSelectionMode = false,
     this.isSelected = false,
@@ -1092,7 +1079,21 @@ class _CollectionTrackTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final track = entry.track;
     final colorScheme = Theme.of(context).colorScheme;
-    final effectiveCoverUrl = _resolveCoverUrl(track);
+    final rawCoverUrl = _resolveRawCoverUrl(track);
+    final localCoverUrl = rawCoverUrl == null
+        ? ref
+              .watch(
+                localLibraryCoverProvider(
+                  LocalLibraryCoverRequest(
+                    isrc: track.isrc?.trim(),
+                    trackName: track.name,
+                    artistName: track.artistName,
+                  ),
+                ),
+              )
+              .maybeWhen(data: (cover) => cover, orElse: () => null)
+        : null;
+    final effectiveCoverUrl = rawCoverUrl ?? localCoverUrl;
 
     // Fine-grained provider watches – only this tile rebuilds when its own
     // history / local-library entry changes.
@@ -1113,26 +1114,21 @@ class _CollectionTrackTile extends ConsumerWidget {
         (s) => s.localLibraryEnabled && s.localLibraryShowDuplicates,
       ),
     );
-    final localItem = showLocalLibraryIndicator
+    final isInLocalLibrary = showLocalLibraryIndicator
         ? ref.watch(
             localLibraryProvider.select((state) {
               final isrc = track.isrc?.trim();
-              if (isrc != null && isrc.isNotEmpty) {
-                final byIsrc = state.getByIsrc(isrc);
-                if (byIsrc != null) return byIsrc;
-              }
-              return state.findByTrackAndArtist(track.name, track.artistName);
+              return state.existsInLibrary(
+                isrc: isrc,
+                trackName: track.name,
+                artistName: track.artistName,
+              );
             }),
           )
-        : null;
+        : false;
 
     final isInHistory = historyItem != null;
-    final isInLocalLibrary = localItem != null;
-    final heroTag = historyItem != null
-        ? 'cover_${historyItem.id}'
-        : localItem != null
-        ? 'cover_lib_${localItem.id}'
-        : null;
+    final heroTag = historyItem != null ? 'cover_${historyItem.id}' : null;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -1245,7 +1241,7 @@ class _CollectionTrackTile extends ConsumerWidget {
           ),
           trailing: isSelectionMode
               ? null
-              : historyItem != null || localItem != null
+              : historyItem != null || isInLocalLibrary
               ? IconButton(
                   tooltip: context.l10n.tooltipPlay,
                   onPressed: () {
@@ -1275,28 +1271,13 @@ class _CollectionTrackTile extends ConsumerWidget {
     );
   }
 
-  String? _resolveCoverUrl(Track track) {
+  String? _resolveRawCoverUrl(Track track) {
     final rawCover = track.coverUrl?.trim();
     if (rawCover != null &&
         rawCover.isNotEmpty &&
         !rawCover.startsWith('content://')) {
       return rawCover;
     }
-
-    final isrc = track.isrc?.trim();
-    if (isrc != null && isrc.isNotEmpty) {
-      final byIsrc = localLibraryState.getByIsrc(isrc);
-      final localCover = byIsrc?.coverPath?.trim();
-      if (localCover != null && localCover.isNotEmpty) return localCover;
-    }
-
-    final byTrack = localLibraryState.findByTrackAndArtist(
-      track.name,
-      track.artistName,
-    );
-    final localCover = byTrack?.coverPath?.trim();
-    if (localCover != null && localCover.isNotEmpty) return localCover;
-
     return null;
   }
 
@@ -1418,13 +1399,14 @@ class _CollectionTrackTile extends ConsumerWidget {
       return;
     }
 
-    final localState = ref.read(localLibraryProvider);
-    LocalLibraryItem? localItem;
-    if (track.isrc != null && track.isrc!.isNotEmpty) {
-      localItem = localState.getByIsrc(track.isrc!);
-    }
-
-    localItem ??= localState.findByTrackAndArtist(track.name, track.artistName);
+    final localItem = await ref
+        .read(localLibraryProvider.notifier)
+        .findExistingAsync(
+          isrc: track.isrc,
+          trackName: track.name,
+          artistName: track.artistName,
+        );
+    if (!context.mounted) return;
 
     if (localItem != null) {
       await Navigator.of(context).push(

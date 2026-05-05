@@ -117,9 +117,113 @@ class LocalLibraryItem {
       );
 
   String get matchKey =>
-      '${trackName.toLowerCase()}|${artistName.toLowerCase()}';
+      '${LibraryDatabase.normalizeLookupText(trackName)}|${LibraryDatabase.normalizeLookupText(artistName)}';
   String get albumKey =>
-      '${albumName.toLowerCase()}|${(albumArtist ?? artistName).toLowerCase()}';
+      '${LibraryDatabase.normalizeLookupText(albumName)}|${LibraryDatabase.normalizeLookupText(albumArtist ?? artistName)}';
+}
+
+enum LocalLibrarySortMode { album, title, artist, latest, quality }
+
+enum LocalLibraryFilterMode { all, albums, singles }
+
+class LocalLibraryPageRequest {
+  final int limit;
+  final int offset;
+  final LocalLibrarySortMode sortMode;
+  final LocalLibraryFilterMode filterMode;
+  final String? searchQuery;
+  final String? format;
+
+  const LocalLibraryPageRequest({
+    this.limit = 100,
+    this.offset = 0,
+    this.sortMode = LocalLibrarySortMode.album,
+    this.filterMode = LocalLibraryFilterMode.all,
+    this.searchQuery,
+    this.format,
+  });
+
+  LocalLibraryPageRequest copyWithOffset(int nextOffset) {
+    return LocalLibraryPageRequest(
+      limit: limit,
+      offset: nextOffset,
+      sortMode: sortMode,
+      filterMode: filterMode,
+      searchQuery: searchQuery,
+      format: format,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is LocalLibraryPageRequest &&
+        other.limit == limit &&
+        other.offset == offset &&
+        other.sortMode == sortMode &&
+        other.filterMode == filterMode &&
+        other.searchQuery == searchQuery &&
+        other.format == format;
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(limit, offset, sortMode, filterMode, searchQuery, format);
+}
+
+class LocalLibraryAlbumGroup {
+  final String albumKey;
+  final String albumName;
+  final String artistName;
+  final String? coverPath;
+  final int trackCount;
+  final int? maxBitDepth;
+  final int? maxSampleRate;
+  final int? maxBitrate;
+  final String? format;
+  final String? releaseDate;
+  final String? genre;
+
+  const LocalLibraryAlbumGroup({
+    required this.albumKey,
+    required this.albumName,
+    required this.artistName,
+    this.coverPath,
+    required this.trackCount,
+    this.maxBitDepth,
+    this.maxSampleRate,
+    this.maxBitrate,
+    this.format,
+    this.releaseDate,
+    this.genre,
+  });
+
+  factory LocalLibraryAlbumGroup.fromDbRow(Map<String, dynamic> row) {
+    return LocalLibraryAlbumGroup(
+      albumKey: row['album_key'] as String,
+      albumName: row['album_name'] as String? ?? '',
+      artistName: row['artist_name'] as String? ?? '',
+      coverPath: row['cover_path'] as String?,
+      trackCount: (row['track_count'] as num?)?.toInt() ?? 0,
+      maxBitDepth: (row['max_bit_depth'] as num?)?.toInt(),
+      maxSampleRate: (row['max_sample_rate'] as num?)?.toInt(),
+      maxBitrate: (row['max_bitrate'] as num?)?.toInt(),
+      format: row['format'] as String?,
+      releaseDate: row['release_date'] as String?,
+      genre: row['genre'] as String?,
+    );
+  }
+}
+
+class LocalLibraryLookupIndex {
+  final Set<String> isrcs;
+  final Set<String> matchKeys;
+  final Map<String, String> filePathById;
+
+  const LocalLibraryLookupIndex({
+    this.isrcs = const <String>{},
+    this.matchKeys = const <String>{},
+    this.filePathById = const <String, String>{},
+  });
 }
 
 class LibraryDatabase {
@@ -142,7 +246,7 @@ class LibraryDatabase {
 
     return await openDatabase(
       path,
-      version: 6,
+      version: 7,
       onConfigure: (db) async {
         await db.rawQuery('PRAGMA journal_mode = WAL');
         await db.execute('PRAGMA synchronous = NORMAL');
@@ -180,7 +284,13 @@ class LibraryDatabase {
         composer TEXT,
         label TEXT,
         copyright TEXT,
-        format TEXT
+        format TEXT,
+        track_name_norm TEXT,
+        artist_name_norm TEXT,
+        album_name_norm TEXT,
+        album_artist_norm TEXT,
+        match_key TEXT,
+        album_key TEXT
       )
     ''');
 
@@ -194,6 +304,7 @@ class LibraryDatabase {
     await db.execute(
       'CREATE INDEX idx_library_file_path ON library(file_path)',
     );
+    await _createNormalizedIndexes(db);
 
     _log.i('Library database schema created with indexes');
   }
@@ -228,10 +339,124 @@ class LibraryDatabase {
       await db.execute('ALTER TABLE library ADD COLUMN composer TEXT');
       _log.i('Added total_tracks/total_discs/composer columns');
     }
+
+    if (oldVersion < 7) {
+      await _addColumnIfMissing(db, 'library', 'track_name_norm', 'TEXT');
+      await _addColumnIfMissing(db, 'library', 'artist_name_norm', 'TEXT');
+      await _addColumnIfMissing(db, 'library', 'album_name_norm', 'TEXT');
+      await _addColumnIfMissing(db, 'library', 'album_artist_norm', 'TEXT');
+      await _addColumnIfMissing(db, 'library', 'match_key', 'TEXT');
+      await _addColumnIfMissing(db, 'library', 'album_key', 'TEXT');
+      await _backfillNormalizedColumns(db);
+      await _createNormalizedIndexes(db);
+      _log.i('Added normalized local library lookup columns');
+    }
+  }
+
+  static String normalizeLookupText(String? value) {
+    return (value ?? '').trim().toLowerCase();
+  }
+
+  static String matchKeyFor(String trackName, String artistName) {
+    return '${normalizeLookupText(trackName)}|${normalizeLookupText(artistName)}';
+  }
+
+  static String albumKeyFor(
+    String albumName,
+    String? albumArtist,
+    String artistName,
+  ) {
+    return '${normalizeLookupText(albumName)}|${normalizeLookupText(albumArtist ?? artistName)}';
+  }
+
+  Future<void> _addColumnIfMissing(
+    Database db,
+    String table,
+    String column,
+    String type,
+  ) async {
+    final info = await db.rawQuery('PRAGMA table_info($table)');
+    final exists = info.any((row) => row['name'] == column);
+    if (!exists) {
+      await db.execute('ALTER TABLE $table ADD COLUMN $column $type');
+    }
+  }
+
+  Future<void> _createNormalizedIndexes(DatabaseExecutor db) async {
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_library_match_key ON library(match_key)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_library_album_key ON library(album_key)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_library_track_norm ON library(track_name_norm)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_library_artist_norm ON library(artist_name_norm)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_library_album_norm ON library(album_name_norm)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_library_scanned_at ON library(scanned_at)',
+    );
+  }
+
+  Future<void> _backfillNormalizedColumns(Database db) async {
+    final rows = await db.query(
+      'library',
+      columns: [
+        'id',
+        'track_name',
+        'artist_name',
+        'album_name',
+        'album_artist',
+      ],
+    );
+    final batch = db.batch();
+    for (final row in rows) {
+      final trackName = row['track_name'] as String? ?? '';
+      final artistName = row['artist_name'] as String? ?? '';
+      final albumName = row['album_name'] as String? ?? '';
+      final albumArtist = row['album_artist'] as String?;
+      batch.update(
+        'library',
+        _normalizedColumns(
+          trackName: trackName,
+          artistName: artistName,
+          albumName: albumName,
+          albumArtist: albumArtist,
+        ),
+        where: 'id = ?',
+        whereArgs: [row['id']],
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Map<String, dynamic> _normalizedColumns({
+    required String trackName,
+    required String artistName,
+    required String albumName,
+    required String? albumArtist,
+  }) {
+    final trackNorm = normalizeLookupText(trackName);
+    final artistNorm = normalizeLookupText(artistName);
+    final albumNorm = normalizeLookupText(albumName);
+    final albumArtistNorm = normalizeLookupText(albumArtist ?? artistName);
+    return {
+      'track_name_norm': trackNorm,
+      'artist_name_norm': artistNorm,
+      'album_name_norm': albumNorm,
+      'album_artist_norm': albumArtistNorm,
+      'match_key': '$trackNorm|$artistNorm',
+      'album_key': '$albumNorm|$albumArtistNorm',
+    };
   }
 
   Map<String, dynamic> _jsonToDbRow(Map<String, dynamic> json) {
-    return {
+    final row = {
       'id': json['id'],
       'track_name': json['trackName'],
       'artist_name': json['artistName'],
@@ -257,6 +482,15 @@ class LibraryDatabase {
       'copyright': json['copyright'],
       'format': json['format'],
     };
+    row.addAll(
+      _normalizedColumns(
+        trackName: json['trackName'] as String? ?? '',
+        artistName: json['artistName'] as String? ?? '',
+        albumName: json['albumName'] as String? ?? '',
+        albumArtist: json['albumArtist'] as String?,
+      ),
+    );
+    return row;
   }
 
   Map<String, dynamic> _dbRowToJson(Map<String, dynamic> row) {
@@ -346,6 +580,173 @@ class LibraryDatabase {
     return rows.map(_dbRowToJson).toList();
   }
 
+  Future<List<Map<String, dynamic>>> getPage(
+    LocalLibraryPageRequest request,
+  ) async {
+    final db = await database;
+    final where = <String>[];
+    final whereArgs = <Object?>[];
+    _appendPageFilters(where, whereArgs, request);
+
+    final rows = await db.query(
+      'library',
+      where: where.isEmpty ? null : where.join(' AND '),
+      whereArgs: whereArgs,
+      orderBy: _orderByForSort(request.sortMode),
+      limit: request.limit,
+      offset: request.offset,
+    );
+    return rows.map(_dbRowToJson).toList(growable: false);
+  }
+
+  Future<int> getPageCount(LocalLibraryPageRequest request) async {
+    final db = await database;
+    final where = <String>[];
+    final whereArgs = <Object?>[];
+    _appendPageFilters(where, whereArgs, request);
+    final rows = await db.rawQuery(
+      'SELECT COUNT(*) AS count FROM library'
+      '${where.isEmpty ? '' : ' WHERE ${where.join(' AND ')}'}',
+      whereArgs,
+    );
+    return Sqflite.firstIntValue(rows) ?? 0;
+  }
+
+  Future<List<LocalLibraryAlbumGroup>> getAlbumPage({
+    int limit = 100,
+    int offset = 0,
+    LocalLibraryFilterMode filterMode = LocalLibraryFilterMode.albums,
+    LocalLibrarySortMode sortMode = LocalLibrarySortMode.album,
+    String? searchQuery,
+  }) async {
+    final db = await database;
+    final where = <String>[];
+    final whereArgs = <Object?>[];
+    _appendSearchFilter(where, whereArgs, searchQuery);
+    final having = switch (filterMode) {
+      LocalLibraryFilterMode.singles => 'COUNT(*) = 1',
+      LocalLibraryFilterMode.albums => 'COUNT(*) > 1',
+      LocalLibraryFilterMode.all => null,
+    };
+    final rows = await db.rawQuery(
+      '''
+      SELECT
+        album_key,
+        MIN(album_name) AS album_name,
+        COALESCE(NULLIF(MIN(album_artist), ''), MIN(artist_name)) AS artist_name,
+        MAX(CASE WHEN cover_path IS NOT NULL AND cover_path != '' THEN cover_path END) AS cover_path,
+        COUNT(*) AS track_count,
+        MAX(bit_depth) AS max_bit_depth,
+        MAX(sample_rate) AS max_sample_rate,
+        MAX(bitrate) AS max_bitrate,
+        MAX(format) AS format,
+        MAX(release_date) AS release_date,
+        MAX(genre) AS genre
+      FROM library
+      ${where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}'}
+      GROUP BY album_key
+      ${having == null ? '' : 'HAVING $having'}
+      ORDER BY ${_albumOrderByForSort(sortMode)}
+      LIMIT ? OFFSET ?
+      ''',
+      [...whereArgs, limit, offset],
+    );
+    return rows.map(LocalLibraryAlbumGroup.fromDbRow).toList(growable: false);
+  }
+
+  Future<int> getAlbumCount({
+    LocalLibraryFilterMode filterMode = LocalLibraryFilterMode.albums,
+    String? searchQuery,
+  }) async {
+    final db = await database;
+    final where = <String>[];
+    final whereArgs = <Object?>[];
+    _appendSearchFilter(where, whereArgs, searchQuery);
+    final having = switch (filterMode) {
+      LocalLibraryFilterMode.singles => 'COUNT(*) = 1',
+      LocalLibraryFilterMode.albums => 'COUNT(*) > 1',
+      LocalLibraryFilterMode.all => null,
+    };
+    final rows = await db.rawQuery('''
+      SELECT COUNT(*) AS count FROM (
+        SELECT album_key
+        FROM library
+        ${where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}'}
+        GROUP BY album_key
+        ${having == null ? '' : 'HAVING $having'}
+      )
+      ''', whereArgs);
+    return Sqflite.firstIntValue(rows) ?? 0;
+  }
+
+  void _appendPageFilters(
+    List<String> where,
+    List<Object?> whereArgs,
+    LocalLibraryPageRequest request,
+  ) {
+    _appendSearchFilter(where, whereArgs, request.searchQuery);
+    final normalizedFormat = request.format?.trim().toLowerCase();
+    if (normalizedFormat != null && normalizedFormat.isNotEmpty) {
+      where.add('LOWER(format) = ?');
+      whereArgs.add(normalizedFormat);
+    }
+    switch (request.filterMode) {
+      case LocalLibraryFilterMode.all:
+        break;
+      case LocalLibraryFilterMode.albums:
+        where.add(
+          'album_key IN (SELECT album_key FROM library GROUP BY album_key HAVING COUNT(*) > 1)',
+        );
+        break;
+      case LocalLibraryFilterMode.singles:
+        where.add(
+          'album_key IN (SELECT album_key FROM library GROUP BY album_key HAVING COUNT(*) = 1)',
+        );
+        break;
+    }
+  }
+
+  void _appendSearchFilter(
+    List<String> where,
+    List<Object?> whereArgs,
+    String? searchQuery,
+  ) {
+    final query = normalizeLookupText(searchQuery);
+    if (query.isEmpty) return;
+    final like = '%$query%';
+    where.add(
+      '(track_name_norm LIKE ? OR artist_name_norm LIKE ? OR album_name_norm LIKE ? OR album_artist_norm LIKE ?)',
+    );
+    whereArgs.addAll([like, like, like, like]);
+  }
+
+  String _orderByForSort(LocalLibrarySortMode sortMode) {
+    return switch (sortMode) {
+      LocalLibrarySortMode.title =>
+        'track_name_norm, artist_name_norm, album_name_norm, disc_number, track_number',
+      LocalLibrarySortMode.artist =>
+        'artist_name_norm, album_name_norm, disc_number, track_number, track_name_norm',
+      LocalLibrarySortMode.latest =>
+        'scanned_at DESC, album_artist_norm, album_name_norm, disc_number, track_number',
+      LocalLibrarySortMode.quality =>
+        'COALESCE(bit_depth, 0) DESC, COALESCE(sample_rate, 0) DESC, COALESCE(bitrate, 0) DESC, album_artist_norm, album_name_norm, disc_number, track_number',
+      LocalLibrarySortMode.album =>
+        'album_artist_norm, album_name_norm, COALESCE(disc_number, 0), COALESCE(track_number, 0), track_name_norm',
+    };
+  }
+
+  String _albumOrderByForSort(LocalLibrarySortMode sortMode) {
+    return switch (sortMode) {
+      LocalLibrarySortMode.latest =>
+        'MAX(scanned_at) DESC, artist_name, album_name',
+      LocalLibrarySortMode.quality =>
+        'MAX(COALESCE(bit_depth, 0)) DESC, MAX(COALESCE(sample_rate, 0)) DESC, MAX(COALESCE(bitrate, 0)) DESC, artist_name, album_name',
+      LocalLibrarySortMode.title => 'album_name, artist_name',
+      LocalLibrarySortMode.artist ||
+      LocalLibrarySortMode.album => 'artist_name, album_name',
+    };
+  }
+
   Future<Map<String, dynamic>?> getById(String id) async {
     final db = await database;
     final rows = await db.query(
@@ -370,6 +771,18 @@ class LibraryDatabase {
     return _dbRowToJson(rows.first);
   }
 
+  Future<Map<String, dynamic>?> getByFilePath(String filePath) async {
+    final db = await database;
+    final rows = await db.query(
+      'library',
+      where: 'file_path = ?',
+      whereArgs: [filePath],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return _dbRowToJson(rows.first);
+  }
+
   Future<bool> existsByIsrc(String isrc) async {
     final db = await database;
     final result = await db.rawQuery(
@@ -386,10 +799,26 @@ class LibraryDatabase {
     final db = await database;
     final rows = await db.query(
       'library',
-      where: 'LOWER(track_name) = ? AND LOWER(artist_name) = ?',
-      whereArgs: [trackName.toLowerCase(), artistName.toLowerCase()],
+      where: 'match_key = ?',
+      whereArgs: [matchKeyFor(trackName, artistName)],
     );
     return rows.map(_dbRowToJson).toList();
+  }
+
+  Future<Map<String, dynamic>?> findFirstByTrackAndArtist(
+    String trackName,
+    String artistName,
+  ) async {
+    final db = await database;
+    final rows = await db.query(
+      'library',
+      where: 'match_key = ?',
+      whereArgs: [matchKeyFor(trackName, artistName)],
+      orderBy: _orderByForSort(LocalLibrarySortMode.album),
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return _dbRowToJson(rows.first);
   }
 
   Future<Map<String, dynamic>?> findExisting({
@@ -421,9 +850,54 @@ class LibraryDatabase {
   Future<Set<String>> getAllTrackKeys() async {
     final db = await database;
     final rows = await db.rawQuery(
-      'SELECT LOWER(track_name) || "|" || LOWER(artist_name) as match_key FROM library',
+      'SELECT match_key FROM library WHERE match_key IS NOT NULL AND match_key != ""',
     );
     return rows.map((r) => r['match_key'] as String).toSet();
+  }
+
+  Future<LocalLibraryLookupIndex> getLookupIndex() async {
+    final db = await database;
+    final rows = await db.rawQuery(
+      'SELECT id, file_path, isrc, match_key FROM library',
+    );
+    final isrcs = <String>{};
+    final matchKeys = <String>{};
+    final filePathById = <String, String>{};
+    for (final row in rows) {
+      final id = row['id'] as String?;
+      final filePath = row['file_path'] as String?;
+      if (id != null && id.isNotEmpty && filePath != null) {
+        filePathById[id] = filePath;
+      }
+      final isrc = row['isrc'] as String?;
+      if (isrc != null && isrc.isNotEmpty) {
+        isrcs.add(isrc);
+      }
+      final matchKey = row['match_key'] as String?;
+      if (matchKey != null && matchKey.isNotEmpty) {
+        matchKeys.add(matchKey);
+      }
+    }
+    return LocalLibraryLookupIndex(
+      isrcs: Set<String>.unmodifiable(isrcs),
+      matchKeys: Set<String>.unmodifiable(matchKeys),
+      filePathById: Map<String, String>.unmodifiable(filePathById),
+    );
+  }
+
+  Future<List<String>> getCoverPaths({int? limit, int? offset}) async {
+    final db = await database;
+    final rows = await db.query(
+      'library',
+      columns: ['cover_path'],
+      where: 'cover_path IS NOT NULL AND cover_path != ""',
+      limit: limit,
+      offset: offset,
+    );
+    return rows
+        .map((row) => row['cover_path'] as String?)
+        .whereType<String>()
+        .toList(growable: false);
   }
 
   Future<void> deleteByPath(String filePath) async {

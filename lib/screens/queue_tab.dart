@@ -2369,7 +2369,12 @@ class _QueueTabState extends ConsumerState<QueueTab> {
       settingsProvider.select((s) => s.localLibraryEnabled),
     );
     final localLibraryItems = localLibraryEnabled
-        ? ref.watch(localLibraryProvider.select((s) => s.items))
+        ? ref
+              .watch(localLibraryAllItemsProvider)
+              .maybeWhen(
+                data: (items) => items,
+                orElse: () => const <LocalLibraryItem>[],
+              )
         : const <LocalLibraryItem>[];
     // Watch with selector on key fields to reduce unnecessary rebuilds.
     // LibraryCollectionsState doesn't implement == so watching without

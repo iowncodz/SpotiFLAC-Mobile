@@ -374,7 +374,7 @@ class _LibrarySettingsPageState extends ConsumerState<LibrarySettingsPage> {
 
           SliverToBoxAdapter(
             child: _LibraryHeroCard(
-              itemCount: libraryState.items.length,
+              itemCount: libraryState.totalCount,
               excludedDownloadedCount: libraryState.excludedDownloadedCount,
               isScanning: libraryState.isScanning,
               scanIsFinalizing: libraryState.scanIsFinalizing,
@@ -547,25 +547,23 @@ class _LibrarySettingsPageState extends ConsumerState<LibrarySettingsPage> {
                     ),
                   ],
                   Opacity(
-                    opacity: libraryState.items.isNotEmpty ? 1.0 : 0.5,
+                    opacity: libraryState.totalCount > 0 ? 1.0 : 0.5,
                     child: SettingsItem(
                       icon: Icons.cleaning_services_outlined,
                       title: context.l10n.libraryCleanupMissingFiles,
                       subtitle: context.l10n.libraryCleanupMissingFilesSubtitle,
-                      onTap: libraryState.items.isNotEmpty
+                      onTap: libraryState.totalCount > 0
                           ? _cleanupMissingFiles
                           : null,
                     ),
                   ),
                   Opacity(
-                    opacity: libraryState.items.isNotEmpty ? 1.0 : 0.5,
+                    opacity: libraryState.totalCount > 0 ? 1.0 : 0.5,
                     child: SettingsItem(
                       icon: Icons.delete_outline,
                       title: context.l10n.libraryClear,
                       subtitle: context.l10n.libraryClearSubtitle,
-                      onTap: libraryState.items.isNotEmpty
-                          ? _clearLibrary
-                          : null,
+                      onTap: libraryState.totalCount > 0 ? _clearLibrary : null,
                       showDivider: false,
                     ),
                   ),
