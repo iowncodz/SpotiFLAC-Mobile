@@ -24,11 +24,13 @@ func TestItemProgressPreparingAndDownloadingStatuses(t *testing.T) {
 		}
 	}
 
-	SetItemProgress(itemID, 0.37, 0, 0)
+	SetItemProgress(itemID, 0.05, 0, 0)
 	if item := multiProgress.Items[itemID]; item == nil {
 		t.Fatal("expected item progress entry to exist after update")
-	} else if item.Status != itemProgressStatusDownloading {
-		t.Fatalf("status after progress update = %q, want %q", item.Status, itemProgressStatusDownloading)
+	} else if item.Status != itemProgressStatusPreparing {
+		t.Fatalf("status after synthetic pre-download progress = %q, want %q", item.Status, itemProgressStatusPreparing)
+	} else if item.Progress != 0 {
+		t.Fatalf("progress after synthetic pre-download progress = %v, want 0", item.Progress)
 	}
 
 	SetItemDownloading(itemID)
@@ -36,6 +38,15 @@ func TestItemProgressPreparingAndDownloadingStatuses(t *testing.T) {
 		t.Fatal("expected item progress entry to exist after downloading status")
 	} else if item.Status != itemProgressStatusDownloading {
 		t.Fatalf("status after download start = %q, want %q", item.Status, itemProgressStatusDownloading)
+	}
+
+	SetItemProgress(itemID, 0.37, 0, 0)
+	if item := multiProgress.Items[itemID]; item == nil {
+		t.Fatal("expected item progress entry to exist after real update")
+	} else if item.Status != itemProgressStatusDownloading {
+		t.Fatalf("status after real progress update = %q, want %q", item.Status, itemProgressStatusDownloading)
+	} else if item.Progress != 0.37 {
+		t.Fatalf("progress after real update = %v, want 0.37", item.Progress)
 	}
 }
 

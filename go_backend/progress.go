@@ -213,8 +213,8 @@ func StartItemProgress(itemID string) {
 		BytesTotal:    0,
 		BytesReceived: 0,
 		Progress:      0,
-		IsDownloading: true,
-		Status:        itemProgressStatusDownloading,
+		IsDownloading: false,
+		Status:        itemProgressStatusPreparing,
 		revision:      nextMultiProgressSeqLocked(),
 	}
 	delete(removedProgressSeq, itemID)
@@ -316,14 +316,19 @@ func SetItemProgress(itemID string, progress float64, bytesReceived, bytesTotal 
 
 	if item, ok := multiProgress.Items[itemID]; ok {
 		before := itemProgressBridgeState(item)
-		item.Progress = progress
+		hasByteProgress := bytesReceived > 0 || bytesTotal > 0
+		if item.Status != itemProgressStatusPreparing || hasByteProgress || progress >= 1 {
+			item.Progress = progress
+		} else {
+			item.Progress = 0
+		}
 		if bytesReceived > 0 {
 			item.BytesReceived = bytesReceived
 		}
 		if bytesTotal > 0 {
 			item.BytesTotal = bytesTotal
 		}
-		if progress > 0 || bytesReceived > 0 || bytesTotal > 0 {
+		if hasByteProgress || progress >= 1 || item.Status == itemProgressStatusDownloading {
 			item.IsDownloading = true
 			item.Status = itemProgressStatusDownloading
 		}

@@ -150,6 +150,10 @@ class _QueueTabState extends ConsumerState<QueueTab> {
   double? _libraryGridScaleStartExtent;
   int _libraryPageLimit = _libraryPageSize;
   bool _libraryPageLoadScheduled = false;
+  final Map<_QueueLibraryCountsRequest, QueueLibraryCounts>
+  _queueLibraryCountsCache = {};
+  final Map<_QueueLibraryPageRequest, _QueueLibraryPageData>
+  _queueLibraryPageDataCache = {};
 
   double _effectiveTextScale() {
     final textScale = MediaQuery.textScalerOf(context).scale(1.0);
@@ -247,6 +251,55 @@ class _QueueTabState extends ConsumerState<QueueTab> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _libraryPageLoadScheduled = false;
     });
+  }
+
+  QueueLibraryCounts _resolveQueueLibraryCounts(
+    AsyncValue<QueueLibraryCounts> value,
+    _QueueLibraryCountsRequest request,
+  ) {
+    return value.maybeWhen(
+      data: (counts) {
+        _queueLibraryCountsCache[request] = counts;
+        _trimQueueLibraryCaches();
+        return counts;
+      },
+      orElse: () =>
+          _queueLibraryCountsCache[request] ??
+          const QueueLibraryCounts(
+            allTrackCount: 0,
+            albumCount: 0,
+            singleTrackCount: 0,
+          ),
+    );
+  }
+
+  _QueueLibraryPageData _resolveQueueLibraryPageData(
+    AsyncValue<_QueueLibraryPageData>? value,
+    _QueueLibraryPageRequest request,
+  ) {
+    if (value == null) {
+      return _queueLibraryPageDataCache[request] ??
+          const _QueueLibraryPageData();
+    }
+    return value.maybeWhen(
+      data: (data) {
+        _queueLibraryPageDataCache[request] = data;
+        _trimQueueLibraryCaches();
+        return data;
+      },
+      orElse: () =>
+          _queueLibraryPageDataCache[request] ?? const _QueueLibraryPageData(),
+    );
+  }
+
+  void _trimQueueLibraryCaches() {
+    const maxEntries = 24;
+    while (_queueLibraryCountsCache.length > maxEntries) {
+      _queueLibraryCountsCache.remove(_queueLibraryCountsCache.keys.first);
+    }
+    while (_queueLibraryPageDataCache.length > maxEntries) {
+      _queueLibraryPageDataCache.remove(_queueLibraryPageDataCache.keys.first);
+    }
   }
 
   bool _handleLibraryScrollNotification({
@@ -2455,14 +2508,7 @@ class _QueueTabState extends ConsumerState<QueueTab> {
       localLibraryEnabled: localLibraryEnabled,
     );
     final countsValue = ref.watch(_queueLibraryCountsProvider(countsRequest));
-    final queueCounts = countsValue.maybeWhen(
-      data: (counts) => counts,
-      orElse: () => const QueueLibraryCounts(
-        allTrackCount: 0,
-        albumCount: 0,
-        singleTrackCount: 0,
-      ),
-    );
+    final queueCounts = _resolveQueueLibraryCounts(countsValue, countsRequest);
 
     _QueueLibraryPageRequest pageRequest(String filterMode) =>
         _QueueLibraryPageRequest(
@@ -2477,17 +2523,19 @@ class _QueueTabState extends ConsumerState<QueueTab> {
           localLibraryEnabled: localLibraryEnabled,
         );
 
+    final pageRequests = <String, _QueueLibraryPageRequest>{
+      for (final mode in _filterModes) mode: pageRequest(mode),
+    };
     final pageValues = <String, AsyncValue<_QueueLibraryPageData>>{
-      for (final mode in _filterModes)
-        mode: ref.watch(_queueLibraryPageProvider(pageRequest(mode))),
+      for (final entry in pageRequests.entries)
+        entry.key: ref.watch(_queueLibraryPageProvider(entry.value)),
     };
 
     _QueueLibraryPageData pageData(String filterMode) =>
-        pageValues[filterMode]?.maybeWhen(
-          data: (data) => data,
-          orElse: () => const _QueueLibraryPageData(),
-        ) ??
-        const _QueueLibraryPageData();
+        _resolveQueueLibraryPageData(
+          pageValues[filterMode],
+          pageRequests[filterMode]!,
+        );
 
     _FilterContentData getFilterData(String filterMode) {
       return pageData(filterMode).toFilterContentData(

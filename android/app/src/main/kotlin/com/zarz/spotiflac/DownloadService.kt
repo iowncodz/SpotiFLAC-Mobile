@@ -564,12 +564,12 @@ class DownloadService : Service() {
                 nativeWorkerCurrentItemId = request.itemId
                 currentTrackName = request.trackName
                 currentArtistName = request.artistName
-                currentStatus = "downloading"
+                currentStatus = "preparing"
                 lastProgress = 0L
                 lastTotal = 0L
                 updateNotification(0, 0)
                 updateNativeWorkerItem(request.itemId) {
-                    it.status = "downloading"
+                    it.status = "preparing"
                     it.progress = 0.0
                     it.bytesReceived = 0L
                     it.bytesTotal = 0L
@@ -580,7 +580,7 @@ class DownloadService : Service() {
                     isRunning = true,
                     isPaused = false,
                     currentItemId = request.itemId,
-                    message = "Downloading",
+                    message = "Preparing",
                     settingsJson = settingsJson,
                     includeItems = true
                 )
@@ -1100,14 +1100,34 @@ class DownloadService : Service() {
             val root = JSONObject(raw)
             val items = root.optJSONObject("items") ?: return
             val progress = items.optJSONObject(itemId) ?: return
+            val backendStatus = progress.optString("status", "downloading")
             val bytesReceived = progress.optLong("bytes_received", 0L)
             val bytesTotal = progress.optLong("bytes_total", 0L)
+            if (backendStatus == "preparing") {
+                currentStatus = "preparing"
+                updateNativeWorkerItem(itemId) {
+                    it.status = "preparing"
+                    it.progress = 0.0
+                    it.bytesReceived = 0L
+                    it.bytesTotal = 0L
+                }
+                lastProgress = 0L
+                lastTotal = 0L
+                updateNotification(0L, 0L)
+                return
+            }
             val progressValue = if (bytesTotal > 0L) {
                 bytesReceived.toDouble() / bytesTotal.toDouble()
             } else {
                 progress.optDouble("progress", 0.0)
             }.coerceIn(0.0, 1.0)
+            currentStatus = if (backendStatus == "finalizing") {
+                "finalizing"
+            } else {
+                "downloading"
+            }
             updateNativeWorkerItem(itemId) {
+                it.status = currentStatus
                 it.progress = progressValue
                 it.bytesReceived = bytesReceived
                 it.bytesTotal = bytesTotal

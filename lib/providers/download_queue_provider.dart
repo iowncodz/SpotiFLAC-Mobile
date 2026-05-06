@@ -2099,7 +2099,8 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
       final progressFromBackend =
           (itemProgress['progress'] as num?)?.toDouble() ?? 0.0;
       final hasRealProgress =
-          bytesReceived > 0 || bytesTotal > 0 || progressFromBackend > 0;
+          status != 'preparing' &&
+          (bytesReceived > 0 || bytesTotal > 0 || progressFromBackend > 0);
 
       if (status == 'finalizing') {
         progressUpdates[itemId] = const _ProgressUpdate(
@@ -2112,7 +2113,7 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
         continue;
       }
 
-      if (status == 'preparing' && !hasRealProgress) {
+      if (status == 'preparing') {
         progressUpdates[itemId] = const _ProgressUpdate(
           status: DownloadStatus.downloading,
           progress: 0.0,
@@ -2264,10 +2265,7 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
 
         final progressPercent =
             (selectedProgress['progress'] as num?)?.toDouble() ?? 0.0;
-        final hasRealProgress =
-            bytesReceived > 0 || bytesTotal > 0 || progressPercent > 0;
-
-        if (backendStatus == 'preparing' && !hasRealProgress) {
+        if (backendStatus == 'preparing') {
           notifProgress = 0;
           notifTotal = 0;
         } else if (bytesTotal <= 0) {
@@ -5397,6 +5395,11 @@ class DownloadQueueNotifier extends Notifier<DownloadQueueState> {
 
       if (status == 'queued') {
         updateItemStatus(itemId, DownloadStatus.queued, progress: 0.0);
+        continue;
+      }
+
+      if (status == 'preparing') {
+        updateItemStatus(itemId, DownloadStatus.downloading, progress: 0.0);
         continue;
       }
 
