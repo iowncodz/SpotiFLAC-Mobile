@@ -3033,19 +3033,49 @@ class _QueueTabState extends ConsumerState<QueueTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    Text(
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final title = Text(
                       context.l10n.queueDownloadingCount(queueCount),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
-                    ),
-                    const Spacer(),
-                    _buildPauseResumeButton(context, ref, colorScheme),
-                    const SizedBox(width: 4),
-                    _buildClearAllButton(context, ref, colorScheme),
-                  ],
+                    );
+                    final actions = Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      alignment: WrapAlignment.end,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        _buildPauseResumeButton(context, ref, colorScheme),
+                        _buildClearAllButton(context, ref, colorScheme),
+                      ],
+                    );
+
+                    if (constraints.maxWidth < 420) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          title,
+                          const SizedBox(height: 4),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: actions,
+                          ),
+                        ],
+                      );
+                    }
+
+                    return Row(
+                      children: [
+                        Expanded(child: title),
+                        const SizedBox(width: 8),
+                        Flexible(child: actions),
+                      ],
+                    );
+                  },
                 ),
                 if (failedCount > 0 && !isProcessing) ...[
                   const SizedBox(height: 6),
