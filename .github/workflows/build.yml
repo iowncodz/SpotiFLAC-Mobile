@@ -19,18 +19,15 @@ jobs:
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.24.0'
+        flutter-version: '3.22.0'
         channel: 'stable'
     
-    # 🔥 YEH STEP FIX KAR DEGA SDK VERSION - IMPORTANT!
-    - name: Install flutterfix and fix SDK constraints
+    - name: Fix SDK and dependencies
       run: |
-        dart pub global activate flutterfix
-        export PATH="$PATH":"$HOME/.pub-cache/bin"
-        flutterfix sync --original
-        # Force update SDK constraint
-        sed -i 's/>=3.10.0/>=3.4.0/g' pubspec.yaml
-        sed -i 's/^sdk: .*/sdk: ">=3.4.0 <4.0.0"/' pubspec.yaml
+        # Fix SDK constraint
+        sed -i 's/>=3.10.0/>=3.5.0/g' pubspec.yaml
+        # Fix json_serializable version
+        sed -i 's/json_serializable: ^6.14.0/json_serializable: ^6.8.0/g' pubspec.yaml
     
     - name: Clean and get dependencies
       run: |
