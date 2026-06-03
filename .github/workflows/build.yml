@@ -1,8 +1,6 @@
-name: Build AYAAN MUSIC
+name: Build Muischub APK
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -21,17 +19,23 @@ jobs:
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.22.0'  # ✅ YEH LINE CHANGE KI HAI (3.19.0 se 3.22.0)
+        flutter-version: '3.24.0'
         channel: 'stable'
     
-    - name: Enable Flutter Desktop
-      run: flutter config --enable-linux-desktop
+    # 🔥 YEH STEP FIX KAR DEGA SDK VERSION - IMPORTANT!
+    - name: Install flutterfix and fix SDK constraints
+      run: |
+        dart pub global activate flutterfix
+        export PATH="$PATH":"$HOME/.pub-cache/bin"
+        flutterfix sync --original
+        # Force update SDK constraint
+        sed -i 's/>=3.10.0/>=3.4.0/g' pubspec.yaml
+        sed -i 's/^sdk: .*/sdk: ">=3.4.0 <4.0.0"/' pubspec.yaml
     
-    - name: Clean Flutter
-      run: flutter clean
-    
-    - name: Get dependencies
-      run: flutter pub get
+    - name: Clean and get dependencies
+      run: |
+        flutter clean
+        flutter pub get
     
     - name: Build APK
       run: flutter build apk --release
@@ -39,5 +43,5 @@ jobs:
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: Muischub-APK
+        name: Muischub-App
         path: build/app/outputs/flutter-apk/app-release.apk
