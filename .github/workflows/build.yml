@@ -21,7 +21,14 @@ jobs:
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.19.0'
+        flutter-version: '3.22.0'  # ✅ YEH LINE CHANGE KI HAI (3.19.0 se 3.22.0)
+        channel: 'stable'
+    
+    - name: Enable Flutter Desktop
+      run: flutter config --enable-linux-desktop
+    
+    - name: Clean Flutter
+      run: flutter clean
     
     - name: Get dependencies
       run: flutter pub get
